@@ -101,7 +101,7 @@ func TestRegistrationUsesRequestInterceptorWithoutModelRouter(t *testing.T) {
 	}
 }
 
-func TestHTTPAuthenticationEnforcesExactModel(t *testing.T) {
+func TestHTTPAuthenticationDefersExactModelPolicyToInterceptor(t *testing.T) {
 	app, plain := configureTestApp(t, 60)
 	allowed, _ := json.Marshal(FrontendAuthRequest{
 		Method:  http.MethodPost,
@@ -120,6 +120,19 @@ func TestHTTPAuthenticationEnforcesExactModel(t *testing.T) {
 	if _, routed := response.Metadata["target_model"]; routed {
 		t.Fatalf("authentication leaked removed routing metadata: %+v", response.Metadata)
 	}
+	allowedIntercept, _ := json.Marshal(RequestInterceptRequest{
+		SourceFormat:   "openai-response",
+		RequestedModel: "gpt-5.4",
+		Headers:        pluginHeaders(plain),
+		Body:           []byte(`{"model":"gpt-5.4"}`),
+	})
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, allowedIntercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[RequestInterceptResponse](t, raw); response.Terminate {
+		t.Fatalf("allowed model rejected by interceptor: %+v", response)
+	}
 
 	denied, _ := json.Marshal(FrontendAuthRequest{
 		Method:  http.MethodPost,
@@ -131,8 +144,66 @@ func TestHTTPAuthenticationEnforcesExactModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decodeResult[FrontendAuthResponse](t, raw).Authenticated {
-		t.Fatal("unlisted model authenticated")
+	if !decodeResult[FrontendAuthResponse](t, raw).Authenticated {
+		t.Fatal("valid key was reported as invalid for an unlisted model")
+	}
+	deniedIntercept, _ := json.Marshal(RequestInterceptRequest{
+		SourceFormat:   "openai-response",
+		RequestedModel: "gpt-5.4-mini",
+		Headers:        pluginHeaders(plain),
+		Body:           []byte(`{"model":"gpt-5.4-mini"}`),
+	})
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, deniedIntercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interceptResponse := decodeResult[RequestInterceptResponse](t, raw)
+	if !interceptResponse.Terminate || interceptResponse.StatusCode != http.StatusForbidden || !strings.Contains(string(interceptResponse.ResponseBody), "model_not_allowed") {
+		t.Fatalf("unlisted model response = %+v, want model_not_allowed 403", interceptResponse)
+	}
+}
+
+func TestHTTPWeeklyLimitKeepsLegacyKeyAuthenticatedAndReturns429(t *testing.T) {
+	app, plain := configureTestApp(t, 60)
+	key := app.Store().Keys()[0]
+	key.WeeklyLimitUSD = 1
+	if err := app.Store().UpsertKey(key, false); err != nil {
+		t.Fatal(err)
+	}
+	if cost := app.Store().RecordUsage("team-a", "gpt-5.4", "gpt-5.4", false, policy.UsageDetail{
+		Provider:    "codex",
+		InputTokens: 500_000,
+	}); cost != 1 {
+		t.Fatalf("seed cost = %v, want 1", cost)
+	}
+
+	auth, _ := json.Marshal(FrontendAuthRequest{
+		Method:  http.MethodPost,
+		Path:    "/v1/responses",
+		Headers: pluginHeaders(plain),
+		Body:    []byte(`{"model":"gpt-5.4"}`),
+	})
+	raw, err := app.HandleMethod(MethodFrontendAuthAuthenticate, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[FrontendAuthResponse](t, raw); !response.Authenticated || response.Principal != "team-a" {
+		t.Fatalf("over-budget legacy key authentication = %+v, want authenticated", response)
+	}
+
+	intercept, _ := json.Marshal(RequestInterceptRequest{
+		SourceFormat:   "openai-response",
+		RequestedModel: "gpt-5.4",
+		Headers:        pluginHeaders(plain),
+		Body:           []byte(`{"model":"gpt-5.4"}`),
+	})
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, intercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeResult[RequestInterceptResponse](t, raw)
+	if !response.Terminate || response.StatusCode != http.StatusTooManyRequests || !strings.Contains(string(response.ResponseBody), "weekly_exceeded") {
+		t.Fatalf("weekly-limit response = %+v, want weekly_exceeded 429", response)
 	}
 }
 
@@ -240,7 +311,7 @@ func TestWebSocketInterceptorEnforcesBudgetPerExecution(t *testing.T) {
 	}
 }
 
-func TestNonWebSocketInterceptorDoesNotDoubleCountRPM(t *testing.T) {
+func TestHTTPAuthenticationDoesNotConsumeRPMAndInterceptorCountsOnce(t *testing.T) {
 	app, plain := configureTestApp(t, 1)
 	auth, _ := json.Marshal(FrontendAuthRequest{
 		Method:  http.MethodPost,
@@ -262,7 +333,149 @@ func TestNonWebSocketInterceptorDoesNotDoubleCountRPM(t *testing.T) {
 		t.Fatal(err)
 	}
 	if response := decodeResult[RequestInterceptResponse](t, raw); response.Terminate {
-		t.Fatalf("HTTP interceptor double-enforced policy: %+v", response)
+		t.Fatalf("first HTTP execution rejected: %+v", response)
+	}
+
+	// Re-authentication still only validates identity and must not consume RPM.
+	raw, err = app.HandleMethod(MethodFrontendAuthAuthenticate, auth)
+	if err != nil || !decodeResult[FrontendAuthResponse](t, raw).Authenticated {
+		t.Fatalf("second authentication failed: %v", err)
+	}
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, intercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeResult[RequestInterceptResponse](t, raw)
+	if !response.Terminate || response.StatusCode != http.StatusTooManyRequests || !strings.Contains(string(response.ResponseBody), "rpm_exceeded") {
+		t.Fatalf("second HTTP execution = %+v, want rpm_exceeded 429", response)
+	}
+}
+
+func TestHTTPQueryKeyKeepsAuthenticationTimePolicyEnforcement(t *testing.T) {
+	app, plain := configureTestApp(t, 1)
+	auth, _ := json.Marshal(FrontendAuthRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/responses",
+		Query:  map[string][]string{"api_key": {plain}},
+		Body:   []byte(`{"model":"gpt-5.4"}`),
+	})
+	raw, err := app.HandleMethod(MethodFrontendAuthAuthenticate, auth)
+	if err != nil || !decodeResult[FrontendAuthResponse](t, raw).Authenticated {
+		t.Fatalf("first query-key authentication failed: %v", err)
+	}
+
+	// The interceptor ABI has no query field. The original auth-time policy
+	// path must therefore have consumed exactly one RPM slot for this request.
+	raw, err = app.HandleMethod(MethodFrontendAuthAuthenticate, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[FrontendAuthResponse](t, raw); response.Authenticated {
+		t.Fatalf("second query-key request bypassed RPM policy: %+v", response)
+	}
+}
+
+func TestFrontendAuthenticationRejectsUnknownAndDisabledKeys(t *testing.T) {
+	app, plain := configureTestApp(t, 60)
+
+	for name, key := range map[string]string{
+		"unknown":  "native-key-owned-by-cpa",
+		"disabled": plain,
+	} {
+		if name == "disabled" {
+			configured := app.Store().Keys()[0]
+			configured.Enabled = false
+			if err := app.Store().UpsertKey(configured, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		request, _ := json.Marshal(FrontendAuthRequest{
+			Method:  http.MethodPost,
+			Path:    "/v1/responses",
+			Headers: pluginHeaders(key),
+			Body:    []byte(`{"model":"gpt-5.4"}`),
+		})
+		raw, err := app.HandleMethod(MethodFrontendAuthAuthenticate, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response := decodeResult[FrontendAuthResponse](t, raw); response.Authenticated {
+			t.Fatalf("%s key authenticated: %+v", name, response)
+		}
+	}
+}
+
+func TestModelsEndpointPermissionRemainsInFrontendAuthentication(t *testing.T) {
+	app, plain := configureTestApp(t, 60)
+	request, _ := json.Marshal(FrontendAuthRequest{
+		Method:  http.MethodGet,
+		Path:    "/v1/models",
+		Headers: pluginHeaders(plain),
+	})
+
+	raw, err := app.HandleMethod(MethodFrontendAuthAuthenticate, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[FrontendAuthResponse](t, raw); response.Authenticated {
+		t.Fatalf("models endpoint authenticated while disabled: %+v", response)
+	}
+
+	key := app.Store().Keys()[0]
+	key.AllowModelsEndpoint = true
+	if err := app.Store().UpsertKey(key, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, err = app.HandleMethod(MethodFrontendAuthAuthenticate, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[FrontendAuthResponse](t, raw); !response.Authenticated {
+		t.Fatalf("models endpoint rejected while enabled: %+v", response)
+	}
+}
+
+func TestPerCallMediaIsPreChargedOnceByHTTPInterceptor(t *testing.T) {
+	app, plain := configureTestApp(t, 60)
+	key := app.Store().Keys()[0]
+	key.Models = append(key.Models, policy.ModelRule{
+		Model:       "grok-imagine-image-quality",
+		BillingMode: "per_call",
+		PerCallUSD:  2,
+	})
+	if err := app.Store().UpsertKey(key, false); err != nil {
+		t.Fatal(err)
+	}
+
+	auth, _ := json.Marshal(FrontendAuthRequest{
+		Method:  http.MethodPost,
+		Path:    "/v1/images/generations",
+		Headers: pluginHeaders(plain),
+		Body:    []byte(`{"model":"grok-imagine-image-quality","prompt":"a boat"}`),
+	})
+	raw, err := app.HandleMethod(MethodFrontendAuthAuthenticate, auth)
+	if err != nil || !decodeResult[FrontendAuthResponse](t, raw).Authenticated {
+		t.Fatalf("media authentication failed: %v", err)
+	}
+	if summary := app.Store().UsageSummaryFor(app.Store().Keys()[0]); summary.DailyUSD != 0 || summary.DailyCallCount != 0 {
+		t.Fatalf("frontend auth pre-charged media usage: %+v", summary)
+	}
+
+	intercept, _ := json.Marshal(RequestInterceptRequest{
+		SourceFormat:   "openai-image",
+		RequestedModel: "grok-imagine-image-quality",
+		Headers:        pluginHeaders(plain),
+		Body:           []byte(`{"model":"grok-imagine-image-quality","prompt":"a boat"}`),
+	})
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, intercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := decodeResult[RequestInterceptResponse](t, raw); response.Terminate {
+		t.Fatalf("media request rejected: %+v", response)
+	}
+	if summary := app.Store().UsageSummaryFor(app.Store().Keys()[0]); summary.DailyUSD != 2 || summary.DailyCallCount != 1 {
+		t.Fatalf("media pre-charge summary = %+v, want one $2 call", summary)
 	}
 }
 

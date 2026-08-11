@@ -10,7 +10,18 @@
 | **协议** | MIT |
 | **English** | [README.md](./README.md) |
 
-## v0.5.0 行为
+## v0.5.3 旧 Key 兼容
+
+已有插件 Key 和 state file 继续有效，升级后无需新建或轮换 Key。前端鉴权现在只
+确认 Key 身份，模型、RPM、每日/每周预算在请求拦截阶段执行。已启用 Key 超出
+限制时，会返回带 `rpm_exceeded`、`daily_exceeded` 或 `weekly_exceeded` 的
+结构化 `429`，不会再被 CPA 合并成 `401 Invalid API key`；模型未授权则返回
+`403 model_not_allowed`。
+
+未知 Key、已禁用 Key、CPA 原生 Key、已有用量数据、图片/视频按次预扣以及
+`allow_models_endpoint` 行为均保持不变。
+
+## v0.5.x 行为
 
 核心不变量：
 
@@ -57,9 +68,9 @@
 
 v0.5.0 让 CPA 原生解析真实模型：
 
-1. HTTP WebSocket Upgrade 阶段只确认 `cpa_…` key 存在且启用；Upgrade 没有模型执行，因此不消耗 RPM。
-2. 每个 WebSocket 执行帧进入 `request.intercept_before` 后，使用原始 Authorization header 检查真实模型、RPM 与预算。
-3. 普通 HTTP 请求继续在前端鉴权阶段完整校验，request interceptor 不重复计数。
+1. 前端鉴权只确认 `cpa_…` key 存在且启用；鉴权本身不消耗 RPM，也不判断执行预算。
+2. 每个 HTTP 或 WebSocket 模型执行进入 `request.intercept_before` 后，使用原始 Authorization header 检查真实模型、RPM 与预算。
+3. 图片/视频固定按次计费仍在请求拦截阶段预扣一次。
 4. 未知 key 或 CPA 原生 key 交给其他 CPA 鉴权 provider，不受本插件干扰。
 
 ## 配置

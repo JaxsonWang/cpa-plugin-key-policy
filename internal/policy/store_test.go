@@ -47,6 +47,24 @@ func TestStoreAuthenticateUnknownKeyFallsThrough(t *testing.T) {
 	}
 }
 
+func TestAuthenticateKeyOnlyValidatesCredentialIdentity(t *testing.T) {
+	store, plain := newTestStore(t)
+	key := store.Keys()[0]
+	key.WeeklyLimitUSD = 1
+	if err := store.UpsertKey(key, false); err != nil {
+		t.Fatal(err)
+	}
+	store.usage.RecordCost(key.ID, "fast", 1, 0, 0, 0, 0, 1)
+
+	decision := store.AuthenticateKey(http.Header{"Authorization": {"Bearer " + plain}}, nil)
+	if !decision.Known || !decision.Allowed || decision.KeyID != key.ID || decision.Reason != "authenticated" {
+		t.Fatalf("identity decision = %+v, want authenticated known key", decision)
+	}
+	if decision.RateLimited || decision.CostLimited {
+		t.Fatalf("identity authentication applied execution policy: %+v", decision)
+	}
+}
+
 func TestConfigureNormalizesAndPersistsLegacyPricePrecision(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	hash, err := HashKey("cpa_price_precision")

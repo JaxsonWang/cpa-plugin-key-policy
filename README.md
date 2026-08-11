@@ -10,7 +10,20 @@ It issues plugin-owned `cpa_…` keys and enforces an exact model allow-list, RP
 | **License** | MIT |
 | **中文说明** | [README.zh-CN.md](./README.zh-CN.md) |
 
-## v0.5.0 behavior
+## v0.5.3 legacy-key compatibility
+
+Existing plugin-issued keys and the state file remain valid; upgrading does not
+require creating or rotating a key. Frontend authentication now validates key
+identity separately from execution policy. An enabled key that exceeds RPM or a
+daily/weekly budget is authenticated first, then receives a structured `429`
+with `rpm_exceeded`, `daily_exceeded`, or `weekly_exceeded` instead of CPA
+collapsing the policy rejection into `401 Invalid API key`. A disallowed model
+similarly receives `403 model_not_allowed`.
+
+Unknown keys, disabled keys, native CPA keys, existing usage data, per-call
+media pre-charging, and the `allow_models_endpoint` behavior are unchanged.
+
+## v0.5.x behavior
 
 The policy invariant is:
 
@@ -57,9 +70,9 @@ The previous router hook returned a handled model override. CPA then disabled na
 
 v0.5.0 leaves model resolution to CPA:
 
-1. During the HTTP WebSocket Upgrade, frontend auth validates that the `cpa_…` key exists and is enabled. It does not consume RPM because the Upgrade has no model execution.
-2. Before every WebSocket execution frame, `request.intercept_before` checks the resolved requested model, RPM, and budget using the original authorization header.
-3. Normal HTTP requests continue to receive the same policy checks in frontend auth, without double-counting in the interceptor.
+1. Frontend auth validates that the `cpa_…` key exists and is enabled. Authentication itself does not consume RPM or evaluate execution budgets.
+2. Before every HTTP or WebSocket model execution, `request.intercept_before` checks the resolved requested model, RPM, and budget using the original authorization header.
+3. Fixed per-call media requests remain pre-charged once during request interception.
 4. Unknown/native CPA keys are left to other CPA auth providers.
 
 ## Configuration

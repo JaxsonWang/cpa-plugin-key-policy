@@ -195,10 +195,11 @@ func (s *Store) StatePath() string {
 	return s.statePath
 }
 
-// AuthenticateWebSocket validates the downstream key on the HTTP Upgrade.
-// The upgrade carries no model request, so RPM, budget and model checks are
-// deliberately deferred to AuthorizeModel for each WebSocket execution frame.
-func (s *Store) AuthenticateWebSocket(headers http.Header, query map[string][]string) AuthDecision {
+// AuthenticateKey validates only the downstream credential identity. Model,
+// RPM and budget policy is deliberately deferred to AuthorizeModel so a valid
+// key that exceeds a policy limit remains authenticated and can receive the
+// real 403/429 policy response from request interception.
+func (s *Store) AuthenticateKey(headers http.Header, query map[string][]string) AuthDecision {
 	key, enabled := s.findBySecretWhenEnabled(ExtractAPIKey(headers, query))
 	if !enabled {
 		return AuthDecision{Reason: "plugin_disabled"}
@@ -212,8 +213,14 @@ func (s *Store) AuthenticateWebSocket(headers http.Header, query map[string][]st
 		return decision
 	}
 	decision.Allowed = true
-	decision.Reason = "websocket_authenticated"
+	decision.Reason = "authenticated"
 	return decision
+}
+
+// AuthenticateWebSocket is retained for callers that explicitly authenticate
+// an Upgrade request. It has the same identity-only semantics as HTTP auth.
+func (s *Store) AuthenticateWebSocket(headers http.Header, query map[string][]string) AuthDecision {
+	return s.AuthenticateKey(headers, query)
 }
 
 func (s *Store) Authenticate(method, path string, headers http.Header, query map[string][]string, body []byte) AuthDecision {

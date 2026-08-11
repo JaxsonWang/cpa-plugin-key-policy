@@ -113,10 +113,17 @@ func (a *App) authenticate(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	var decision policy.AuthDecision
-	if isWebSocketUpgrade(req.Headers) {
-		decision = a.store.AuthenticateWebSocket(req.Headers, req.Query)
-	} else {
+	decision := a.store.AuthenticateKey(req.Headers, req.Query)
+	// The models endpoint has no model-execution lifecycle, so its binary
+	// permission remains an authentication-time decision. Every model execution
+	// is authenticated by key identity here and policy-checked in the request
+	// interceptor, which preserves real 403/429 errors for valid legacy keys.
+	if policy.IsModelsEndpoint(req.Path) {
+		decision = a.store.Authenticate(req.Method, req.Path, req.Headers, req.Query, req.Body)
+	} else if !isWebSocketUpgrade(req.Headers) && policy.ExtractAPIKey(req.Headers, nil) == "" && policy.ExtractAPIKey(nil, req.Query) != "" {
+		// CPA's request interceptor ABI does not carry query parameters. Keep the
+		// existing HTTP query-key enforcement path here rather than authenticating
+		// a query key and then accidentally skipping its policy in interception.
 		decision = a.store.Authenticate(req.Method, req.Path, req.Headers, req.Query, req.Body)
 	}
 	if !decision.Known || !decision.Allowed {
@@ -126,8 +133,9 @@ func (a *App) authenticate(raw []byte) ([]byte, error) {
 		"provider": PluginID,
 		"key_id":   decision.KeyID,
 	}
-	if decision.Requested != "" {
-		metadata["requested_model"] = decision.Requested
+	requested := policy.ExtractRequestedModel(req.Path, req.Query, req.Body)
+	if requested != "" {
+		metadata["requested_model"] = requested
 	}
 	return OKEnvelope(FrontendAuthResponse{
 		Authenticated: true,
@@ -153,12 +161,6 @@ func (a *App) interceptRequestBefore(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	// HTTP requests already pass through frontend_auth with their complete body.
-	// A Responses WebSocket is different: frontend_auth sees only the Upgrade,
-	// so each execution frame is enforced here using the same original headers.
-	if !isWebSocketUpgrade(req.Headers) {
-		return OKEnvelope(RequestInterceptResponse{})
-	}
 	requested := strings.TrimSpace(req.RequestedModel)
 	if requested == "" {
 		requested = strings.TrimSpace(req.Model)
@@ -168,6 +170,13 @@ func (a *App) interceptRequestBefore(raw []byte) ([]byte, error) {
 	}
 	decision := a.store.AuthorizeModel(req.Headers, nil, requested)
 	if !decision.Known || decision.Allowed {
+		if decision.Allowed && isPerCallSourceFormat(req.SourceFormat) && decision.Rule.BillingMode == "per_call" {
+			model := decision.Rule.Model
+			if strings.TrimSpace(model) == "" {
+				model = decision.Requested
+			}
+			a.store.RecordUsage(decision.KeyID, model, model, false, policy.UsageDetail{})
+		}
 		return OKEnvelope(RequestInterceptResponse{})
 	}
 	status := http.StatusForbidden
@@ -183,6 +192,15 @@ func (a *App) interceptRequestBefore(raw []byte) ([]byte, error) {
 		ResponseHeaders: http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
 		ResponseBody:    policyErrorBody(decision.Reason, requested),
 	})
+}
+
+func isPerCallSourceFormat(source string) bool {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "openai-image", "openai-video":
+		return true
+	default:
+		return false
+	}
 }
 
 func policyErrorBody(reason, model string) []byte {
