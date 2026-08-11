@@ -47,6 +47,46 @@ func TestStoreAuthenticateUnknownKeyFallsThrough(t *testing.T) {
 	}
 }
 
+func TestConfigureNormalizesAndPersistsLegacyPricePrecision(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	hash, err := HashKey("cpa_price_precision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveState(path, []KeyConfig{{
+		ID:      "price-key",
+		Name:    "Price Key",
+		Enabled: true,
+		KeyHash: hash,
+		Models: []ModelRule{{
+			Model:                    "gpt-5.4",
+			InputPricePerMillion:     0.19999999999999998,
+			OutputPricePerMillion:    1.2,
+			CacheReadPricePerMillion: 0.19999999999999998,
+		}},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewStore()
+	if err := store.Configure(Config{Enabled: true, StateFile: path}); err != nil {
+		t.Fatal(err)
+	}
+	rule := store.Keys()[0].Models[0]
+	if rule.InputPricePerMillion != 0.2 || rule.OutputPricePerMillion != 1.2 || rule.CacheReadPricePerMillion != 0.2 {
+		t.Fatalf("normalized prices = %+v, want 0.2/1.2/0.2", rule)
+	}
+
+	persisted, err := LoadState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedRule := persisted.Keys[0].Models[0]
+	if persistedRule.InputPricePerMillion != 0.2 || persistedRule.CacheReadPricePerMillion != 0.2 {
+		t.Fatalf("persisted prices = %+v, want normalized decimals", persistedRule)
+	}
+}
+
 func TestStoreAuthenticateAllowsDirectModel(t *testing.T) {
 	store, plain := newTestStore(t)
 	headers := http.Header{"Authorization": {"Bearer " + plain}}

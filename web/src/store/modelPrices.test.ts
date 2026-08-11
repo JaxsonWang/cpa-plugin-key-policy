@@ -3,6 +3,7 @@ import {
   parseLiteLLM,
   lookupPrice,
   getPriceTable,
+  normalizePrice,
   _resetPriceCache,
 } from "./modelPrices";
 
@@ -25,6 +26,21 @@ describe("parseLiteLLM", () => {
     expect(row!.input_price_per_million).toBeCloseTo(3, 5);
     expect(row!.output_price_per_million).toBeCloseTo(15, 5);
     expect(row!.cache_read_price_per_million).toBeCloseTo(0.3, 5);
+  });
+
+  it("normalizes binary floating-point tails to clean decimal prices", () => {
+    const table = parseLiteLLM({
+      "gpt-clean": {
+        input_cost_per_token: 0.0000002,
+        output_cost_per_token: 0.0000012,
+        cache_read_input_token_cost: 0.0000002,
+      },
+    });
+    const row = lookupPrice(table, "gpt-clean")!;
+    expect(row.input_price_per_million).toBe(0.2);
+    expect(row.output_price_per_million).toBe(1.2);
+    expect(row.cache_read_price_per_million).toBe(0.2);
+    expect(normalizePrice(0.19999999999999998)).toBe(0.2);
   });
 
   it("matches case-insensitively", () => {
@@ -94,6 +110,24 @@ describe("parseLiteLLM", () => {
 });
 
 describe("getPriceTable caching", () => {
+  it("normalizes price tails from an existing session cache", async () => {
+    sessionStorage.setItem("cpa-key-policy:litellm-prices", JSON.stringify({
+      fetchedAt: Date.now(),
+      table: [["cached", {
+        input_price_per_million: 0.19999999999999998,
+        output_price_per_million: 1.2,
+        cache_read_price_per_million: 0.19999999999999998,
+      }]],
+    }));
+
+    const table = await getPriceTable();
+    expect(lookupPrice(table, "cached")).toEqual({
+      input_price_per_million: 0.2,
+      output_price_per_million: 1.2,
+      cache_read_price_per_million: 0.2,
+    });
+  });
+
   it("fetches once, caches in sessionStorage, returns from cache on second call", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

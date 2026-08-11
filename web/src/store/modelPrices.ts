@@ -28,6 +28,7 @@ const LITELLM_URL =
 // lifetime; window close clears it. Stale after TTL_MS.
 const CACHE_KEY = "cpa-key-policy:litellm-prices";
 const TTL_MS = 24 * 60 * 60 * 1000;
+const PRICE_DECIMAL_PLACES = 12;
 
 export interface PriceRow {
   input_price_per_million: number;
@@ -45,13 +46,30 @@ interface CacheEnvelope {
   table: [string, PriceRow][];
 }
 
+// Keep prices as numbers for the API while trimming binary floating-point
+// tails such as 0.19999999999999998 from calculations and legacy state.
+export function normalizePrice(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Number(value.toFixed(PRICE_DECIMAL_PLACES));
+}
+
+function normalizePriceRow(row: PriceRow): PriceRow {
+  return {
+    input_price_per_million: normalizePrice(row.input_price_per_million),
+    output_price_per_million: normalizePrice(row.output_price_per_million),
+    cache_read_price_per_million: normalizePrice(row.cache_read_price_per_million),
+  };
+}
+
 // Per-token USD → per-million-token USD. Litellm stores costs as USD per single
 // token; the form is USD per million tokens.
 function perMillion(perToken: unknown): number {
   if (typeof perToken !== "number" || !Number.isFinite(perToken) || perToken < 0) {
     return 0;
   }
-  return perToken * 1_000_000;
+  return normalizePrice(perToken * 1_000_000);
 }
 
 function num(v: unknown): number {
@@ -102,7 +120,7 @@ function readCache(): PriceTable | null {
       return null;
     }
     if (Date.now() - env.fetchedAt > TTL_MS) return null;
-    return new Map(env.table);
+    return new Map(env.table.map(([model, row]) => [model, normalizePriceRow(row)]));
   } catch {
     return null;
   }
@@ -148,7 +166,8 @@ export async function getPriceTable(): Promise<PriceTable | null> {
 // lowercased). Returns null when no entry exists → caller shows no recommend.
 export function lookupPrice(table: PriceTable | null, model: string): PriceRow | null {
   if (!table || !model) return null;
-  return table.get(model.toLowerCase()) ?? null;
+  const row = table.get(model.toLowerCase());
+  return row ? normalizePriceRow(row) : null;
 }
 
 // Exposed for tests to reset cache state between cases.

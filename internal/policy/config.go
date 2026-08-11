@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,15 @@ type Config struct {
 	// model policies are canonical from v0.5.0 onward, so normalization clears
 	// this table before the configuration enters the runtime store.
 	Aliases []AliasMapping `yaml:"aliases,omitempty" json:"aliases,omitempty"`
+}
+
+const priceDecimalScale = 1_000_000_000_000
+
+func normalizePrice(value float64) float64 {
+	if math.Abs(value) > math.MaxFloat64/priceDecimalScale {
+		return value
+	}
+	return math.Round(value*priceDecimalScale) / priceDecimalScale
 }
 
 type KeyConfig struct {
@@ -274,9 +284,15 @@ func normalizeConfig(cfg *Config) error {
 			rule.Provider = ""
 			rule.TargetModel = ""
 			rule.Group = ""
-			if rule.InputPricePerMillion < 0 || rule.OutputPricePerMillion < 0 || rule.CacheReadPricePerMillion < 0 {
-				return fmt.Errorf("key %q model %q prices cannot be negative", key.ID, model)
+			if math.IsNaN(rule.InputPricePerMillion) || math.IsInf(rule.InputPricePerMillion, 0) ||
+				math.IsNaN(rule.OutputPricePerMillion) || math.IsInf(rule.OutputPricePerMillion, 0) ||
+				math.IsNaN(rule.CacheReadPricePerMillion) || math.IsInf(rule.CacheReadPricePerMillion, 0) ||
+				rule.InputPricePerMillion < 0 || rule.OutputPricePerMillion < 0 || rule.CacheReadPricePerMillion < 0 {
+				return fmt.Errorf("key %q model %q prices must be finite and non-negative", key.ID, model)
 			}
+			rule.InputPricePerMillion = normalizePrice(rule.InputPricePerMillion)
+			rule.OutputPricePerMillion = normalizePrice(rule.OutputPricePerMillion)
+			rule.CacheReadPricePerMillion = normalizePrice(rule.CacheReadPricePerMillion)
 			switch strings.ToLower(strings.TrimSpace(rule.BillingMode)) {
 			case "", "tokens":
 				rule.BillingMode = "tokens"
@@ -285,9 +301,10 @@ func normalizeConfig(cfg *Config) error {
 			default:
 				return fmt.Errorf("key %q model %q billing_mode %q must be \"tokens\" or \"per_call\"", key.ID, model, rule.BillingMode)
 			}
-			if rule.PerCallUSD < 0 {
-				return fmt.Errorf("key %q model %q per_call_usd cannot be negative", key.ID, model)
+			if math.IsNaN(rule.PerCallUSD) || math.IsInf(rule.PerCallUSD, 0) || rule.PerCallUSD < 0 {
+				return fmt.Errorf("key %q model %q per_call_usd must be finite and non-negative", key.ID, model)
 			}
+			rule.PerCallUSD = normalizePrice(rule.PerCallUSD)
 			normalized = append(normalized, rule)
 		}
 		key.Models = normalized

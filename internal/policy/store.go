@@ -164,6 +164,12 @@ func stateNeedsModelMigration(state *State) bool {
 				strings.TrimSpace(rule.Group) != "" {
 				return true
 			}
+			if normalizePrice(rule.InputPricePerMillion) != rule.InputPricePerMillion ||
+				normalizePrice(rule.OutputPricePerMillion) != rule.OutputPricePerMillion ||
+				normalizePrice(rule.CacheReadPricePerMillion) != rule.CacheReadPricePerMillion ||
+				normalizePrice(rule.PerCallUSD) != rule.PerCallUSD {
+				return true
+			}
 		}
 	}
 	return false

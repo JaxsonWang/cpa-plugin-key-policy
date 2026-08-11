@@ -2,7 +2,12 @@ import { Fragment, useCallback, useEffect, useState, type ReactNode } from "reac
 import { useNavigate } from "react-router-dom";
 import type { KeyPublic, ModelRule } from "../types";
 import ModelPicker from "./ModelPicker";
-import { getPriceTable, lookupPrice, type PriceTable } from "../store/modelPrices";
+import {
+  getPriceTable,
+  lookupPrice,
+  normalizePrice,
+  type PriceTable,
+} from "../store/modelPrices";
 import { useT } from "../i18n";
 
 export interface KeyFormValues {
@@ -60,6 +65,10 @@ function parseNum(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function parsePrice(value: string): number {
+  return normalizePrice(parseNum(value));
+}
+
 export default function KeyForm({
   initial,
   idReadOnly,
@@ -87,11 +96,11 @@ export default function KeyForm({
     const out: Record<string, PriceRow> = {};
     for (const m of initial?.models ?? []) {
       out[priceKey(m)] = {
-        input_price_per_million: m.input_price_per_million ?? 0,
-        output_price_per_million: m.output_price_per_million ?? 0,
-        cache_read_price_per_million: m.cache_read_price_per_million ?? 0,
+        input_price_per_million: normalizePrice(m.input_price_per_million ?? 0),
+        output_price_per_million: normalizePrice(m.output_price_per_million ?? 0),
+        cache_read_price_per_million: normalizePrice(m.cache_read_price_per_million ?? 0),
         billing_mode: m.billing_mode === "per_call" ? "per_call" : "tokens",
-        per_call_usd: m.per_call_usd ?? 0,
+        per_call_usd: normalizePrice(m.per_call_usd ?? 0),
       };
     }
     return out;
@@ -144,7 +153,7 @@ export default function KeyForm({
       ...prev,
       [key]: {
         ...(prev[key] ?? { input_price_per_million: 0, output_price_per_million: 0, cache_read_price_per_million: 0, billing_mode: "tokens", per_call_usd: 0 }),
-        [field]: field === "billing_mode" ? (value === "per_call" ? "per_call" : "tokens") : parseNum(value),
+        [field]: field === "billing_mode" ? (value === "per_call" ? "per_call" : "tokens") : parsePrice(value),
       },
     }));
   };
@@ -183,11 +192,11 @@ export default function KeyForm({
       const row = prices[priceKey(m)];
       return {
         ...m,
-        input_price_per_million: row?.input_price_per_million ?? 0,
-        output_price_per_million: row?.output_price_per_million ?? 0,
-        cache_read_price_per_million: row?.cache_read_price_per_million ?? 0,
+        input_price_per_million: normalizePrice(row?.input_price_per_million ?? 0),
+        output_price_per_million: normalizePrice(row?.output_price_per_million ?? 0),
+        cache_read_price_per_million: normalizePrice(row?.cache_read_price_per_million ?? 0),
         billing_mode: row?.billing_mode === "per_call" ? "per_call" : "tokens",
-        per_call_usd: row?.per_call_usd ?? 0,
+        per_call_usd: normalizePrice(row?.per_call_usd ?? 0),
       };
     });
     setBusy(true);
