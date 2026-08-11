@@ -29,6 +29,13 @@ export async function patchKey(
   return data.key;
 }
 
+export async function setKeyEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<KeyPublic> {
+  return patchKey({ id, enabled });
+}
+
 export async function deleteKey(id: string): Promise<void> {
   const c = apiClient();
   await c.delete(pluginPath("/keys"), { params: { id } });

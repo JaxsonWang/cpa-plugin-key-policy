@@ -315,6 +315,53 @@ td .mono, .mono { font-family: "Courier Prime", ui-monospace, Consolas, "Courier
 .switch input:checked + .track .thumb { transform: translateX(20px); }
 .switch input:focus-visible + .track { box-shadow: 0 0 0 3px var(--accent-ring); }
 
+/* Key policy list: dense desktop table with direct status controls. */
+.key-list-page .fp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin: 0 0 16px;
+}
+.key-list-page .fp-head h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.key-list-page .fp-actions { display: flex; gap: 8px; }
+.key-bulkbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-height: 48px; margin-bottom: 10px; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+  transition: border-color var(--t-fast), background-color var(--t-fast);
+}
+.key-bulkbar.active { border-color: var(--accent); background: var(--accent-soft); }
+.key-select-all { display: inline-flex; align-items: center; gap: 9px; font-weight: 600; cursor: pointer; }
+.key-bulk-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.key-checkbox {
+  width: 16px; height: 16px; margin: 0; flex: none;
+  accent-color: var(--accent); cursor: pointer;
+}
+.key-checkbox:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+.key-table { overflow-x: auto !important; }
+.key-table table { min-width: 1120px; }
+.key-table th, .key-table td { padding: 10px 11px; vertical-align: middle; }
+.key-table tbody tr.is-disabled td { background: var(--danger-soft); }
+.key-table tbody tr.is-disabled:hover td { background: var(--danger-soft); }
+.key-select-col { width: 40px; text-align: center; }
+.key-name-link { color: var(--text); font-weight: 700; font-size: 14px; }
+.key-name-link:hover { color: var(--accent-2); }
+.key-id { color: var(--muted); margin-top: 2px; }
+.key-preview {
+  display: block; max-width: 150px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; color: var(--muted);
+}
+.key-status-switch { gap: 7px; }
+.key-status-switch .track { width: 38px; height: 22px; }
+.key-status-switch .thumb { width: 16px; height: 16px; }
+.key-status-switch input:checked + .track .thumb { transform: translateX(16px); }
+.key-status-switch input:disabled + .track { opacity: 0.55; cursor: wait; }
+.key-status-label { min-width: 42px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.key-usage-cell { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+.key-usage-cell span { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+.key-usage-cell b { min-width: 30px; color: var(--text); font-weight: 600; }
+.key-table-actions { display: flex; align-items: center; gap: 4px; min-width: 278px; }
+.key-table-actions .btn { padding: 5px 7px; font-size: 12px; white-space: nowrap; }
+
 /* ===== Key detail (KeyUsage) page ===== */
 /* Right-aligned numeric cells: applied via the .num class on th/td. Keeps the
    per-model usage table's USD / token / call-count columns tidy and scannable. */
@@ -406,6 +453,15 @@ td.strong { font-weight: 600; color: var(--text); }
   .mobile-hidden { display: none !important; }
   .mobile-only { display: block !important; }
   a.mobile-only, .keyusage-edit-link.mobile-only { display: inline-flex !important; }
+
+  .key-bulkbar {
+    position: sticky; top: 0; z-index: 40;
+    align-items: flex-start; margin: 0 -4px 12px; padding: 10px;
+  }
+  .key-select-all { min-height: 32px; }
+  .key-bulk-actions { justify-content: flex-end; }
+  .key-bulk-actions .btn { padding: 7px 9px; }
+  .key-bulk-actions .mobile-only { display: inline-flex !important; }
 
   .mobile-form-header {
     display: flex; align-items: center; gap: 10px;
@@ -541,18 +597,25 @@ td.strong { font-weight: 600; color: var(--text); }
   overflow: hidden;
 }
 .keycard:hover { border-color: var(--border-hover); }
-.keycard.disabled { opacity: 0.55; }
+.keycard.disabled { background: var(--danger-soft); }
+.keycard.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .keycard .kc-head {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 6px;
 }
+.keycard .kc-select { display: inline-flex; align-items: center; }
 .keycard .kc-dot {
   width: 8px; height: 8px; border-radius: var(--r-full); flex: none;
   background: var(--ok);
 }
 .keycard.disabled .kc-dot { background: var(--danger); }
-.keycard .kc-name { font-weight: 600; font-size: 15px; flex: 1; }
+.keycard .kc-name {
+  font-weight: 600; font-size: 15px; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .keycard .kc-chevron { color: var(--muted); font-size: 16px; }
+.keycard .key-status-switch { flex: none; }
+.keycard .key-status-switch .key-status-label { display: none; }
 .keycard .kc-preview {
   font-family: "Courier Prime", ui-monospace, Consolas, monospace;
   font-size: 12px; color: var(--muted);

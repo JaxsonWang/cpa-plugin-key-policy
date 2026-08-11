@@ -77,6 +77,17 @@ plugins:
       state_file: "cpa-key-policy-state.json"
 ```
 
+CPA plugin store source:
+
+```text
+https://raw.githubusercontent.com/JaxsonWang/cpa-plugin-key-policy/main/registry.json
+```
+
+Add this URL to `plugins.store-sources`, then select the `JaxsonWang` entry for
+`cpa-key-policy`. If the official `origin652` build is already installed,
+uninstall that plugin entry before switching store sources. The state file is
+separate from the plugin library and is reused after reinstalling this build.
+
 Canonical key policy shape:
 
 ```yaml

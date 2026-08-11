@@ -77,6 +77,16 @@ plugins:
       state_file: "cpa-key-policy-state.json"
 ```
 
+CPA 插件商店源：
+
+```text
+https://raw.githubusercontent.com/JaxsonWang/cpa-plugin-key-policy/main/registry.json
+```
+
+将该 URL 添加到 `plugins.store-sources`，然后选择 `JaxsonWang` 来源的
+`cpa-key-policy`。如果已经安装官方源中的 `origin652` 版本，需要先卸载该插件
+条目再切换商店来源；state file 独立于插件动态库，重新安装后会继续复用。
+
 规范的 key policy：
 
 ```yaml
