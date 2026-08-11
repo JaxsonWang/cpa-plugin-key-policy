@@ -85,8 +85,11 @@ https://raw.githubusercontent.com/JaxsonWang/cpa-plugin-key-policy/main/registry
 
 Add this URL to `plugins.store-sources`, then select the `JaxsonWang` entry for
 `cpa-key-policy`. If the official `origin652` build is already installed,
-uninstall that plugin entry before switching store sources. The state file is
-separate from the plugin library and is reused after reinstalling this build.
+record `plugins.configs.cpa-key-policy.state_file` before uninstalling that
+plugin entry, because uninstalling removes the saved plugin config. The state
+file itself is separate from the plugin library and remains on disk. After
+installing the `JaxsonWang` build, restore the same `state_file` path before
+opening the Key Policy UI, then verify the existing keys and usage data.
 
 Canonical key policy shape:
 
