@@ -239,6 +239,7 @@ func (a *App) managementRegistration() ManagementRegistrationResponse {
 			{Method: http.MethodDelete, Path: base + "/keys", Description: "Delete a downstream CPA key policy by id."},
 			{Method: http.MethodPost, Path: base + "/keys/rotate", Description: "Rotate one downstream CPA key by id."},
 			{Method: http.MethodPost, Path: base + "/keys/reset-rpm", Description: "Reset one downstream CPA key RPM counter by id."},
+			{Method: http.MethodPost, Path: base + "/keys/reset-usage", Description: "Reset daily and weekly usage for all downstream CPA keys."},
 			{Method: http.MethodGet, Path: base + "/keys/usage", Description: "Per-model usage breakdown for one downstream CPA key by id."},
 			{Method: http.MethodGet, Path: base + "/status", Description: "Show cpa-key-policy runtime status."},
 		},
@@ -274,6 +275,8 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 		return OKEnvelope(a.rotateKey(idFromRequest(req.Query, req.Body)))
 	case req.Method == http.MethodPost && path == base+"/keys/reset-rpm":
 		return OKEnvelope(a.resetRPM(idFromRequest(req.Query, req.Body)))
+	case req.Method == http.MethodPost && path == base+"/keys/reset-usage":
+		return OKEnvelope(a.resetUsage())
 	case req.Method == http.MethodGet && path == base+"/keys/usage":
 		return OKEnvelope(a.keyUsage(idFromRequest(req.Query, req.Body)))
 	case req.Method == http.MethodGet && path == base+"/status":
@@ -438,6 +441,13 @@ func (a *App) resetRPM(id string) ManagementResponse {
 		return jsonError(http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	return jsonResponse(http.StatusOK, map[string]any{"reset": true, "id": strings.TrimSpace(id)})
+}
+
+func (a *App) resetUsage() ManagementResponse {
+	if err := a.store.ResetAllUsage(); err != nil {
+		return jsonError(http.StatusInternalServerError, "persist_failed", err.Error())
+	}
+	return jsonResponse(http.StatusOK, map[string]any{"reset": true, "scope": "all"})
 }
 
 func (a *App) keyUsage(id string) ManagementResponse {

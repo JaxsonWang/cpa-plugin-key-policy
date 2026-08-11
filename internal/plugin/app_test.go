@@ -302,3 +302,54 @@ func TestManagementRegistrationOmitsRemovedRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestManagementRegistrationIncludesGlobalUsageReset(t *testing.T) {
+	app := NewApp()
+	t.Cleanup(app.Shutdown)
+	for _, route := range app.managementRegistration().Routes {
+		if route.Method == http.MethodPost && route.Path == "/plugins/cpa-key-policy/keys/reset-usage" {
+			return
+		}
+	}
+	t.Fatal("global usage reset route was not registered")
+}
+
+func TestManagementResetUsageClearsDailyAndWeeklyAndPersists(t *testing.T) {
+	app, _ := configureTestApp(t, 60)
+	if cost := app.Store().RecordUsage("team-a", "gpt-5.4", "gpt-5.4", false, policy.UsageDetail{
+		Provider:    "codex",
+		InputTokens: 1_000_000,
+	}); cost != 2 {
+		t.Fatalf("seed cost = %v, want 2", cost)
+	}
+
+	before := app.Store().UsageSummaryFor(app.Store().Keys()[0])
+	if before.DailyUSD != 2 || before.WeeklyUSD != 2 {
+		t.Fatalf("usage before reset = %+v, want daily and weekly usage", before)
+	}
+
+	request, _ := json.Marshal(ManagementRequest{
+		Method: http.MethodPost,
+		Path:   "/v0/management/plugins/cpa-key-policy/keys/reset-usage",
+	})
+	raw, err := app.HandleMethod(MethodManagementHandle, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeResult[ManagementResponse](t, raw)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("reset response = %+v, body = %s", response, response.Body)
+	}
+
+	after := app.Store().UsageSummaryFor(app.Store().Keys()[0])
+	if after.DailyUSD != 0 || after.WeeklyUSD != 0 || after.DailyCallCount != 0 || after.WeeklyCallCount != 0 {
+		t.Fatalf("usage after reset = %+v, want zero daily and weekly usage", after)
+	}
+	persisted, err := policy.LoadState(app.Store().StatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Usage) != 0 {
+		t.Fatalf("persisted usage after reset = %+v, want empty", persisted.Usage)
+	}
+}

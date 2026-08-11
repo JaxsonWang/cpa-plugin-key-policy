@@ -395,13 +395,6 @@ func (s *Store) UsageSummaryFor(key KeyConfig) UsageSummary {
 	return usage.Summary(key)
 }
 
-func (s *Store) ResetUsage(id string) {
-	_, usage := s.runtimeComponents()
-	if usage != nil {
-		usage.resetUsage(id)
-	}
-}
-
 func (s *Store) ModelUsageFor(keyID string) (KeyConfig, []ModelUsageEntry, bool) {
 	key := s.findByID(keyID)
 	if key == nil {
@@ -660,6 +653,11 @@ func (s *Store) usageSnapshotLocked() map[string]*UsageState {
 }
 
 func (s *Store) FlushUsage() error {
+	// Serialize the snapshot with persistence. Taking the snapshot before this
+	// lock could let an older background flush overwrite a manual usage reset.
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
 	s.mu.RLock()
 	path := s.statePath
 	usage := s.usageSnapshotLocked()
@@ -667,19 +665,38 @@ func (s *Store) FlushUsage() error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
-	return s.saveUsageOnly(path, usage)
+	return SaveUsageOnly(path, usage)
+}
+
+// ResetAllUsage clears every key's daily and weekly usage and persists the
+// reset before changing the in-memory ledger. A persistence failure therefore
+// leaves the live counters untouched instead of making disk and memory diverge.
+func (s *Store) ResetAllUsage() error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
+	s.mu.RLock()
+	path := s.statePath
+	usage := s.usage
+	s.mu.RUnlock()
+	if strings.TrimSpace(path) != "" {
+		if err := SaveUsageOnly(path, make(map[string]*UsageState)); err != nil {
+			return err
+		}
+	}
+	if usage != nil {
+		usage.resetAllUsage()
+	}
+	return nil
 }
 
 func (s *Store) saveState(path string, keys []KeyConfig, usage map[string]*UsageState) error {
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
 	return SaveState(path, keys, usage)
-}
-
-func (s *Store) saveUsageOnly(path string, usage map[string]*UsageState) error {
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
-	return SaveUsageOnly(path, usage)
 }
 
 type usageFlusher struct {

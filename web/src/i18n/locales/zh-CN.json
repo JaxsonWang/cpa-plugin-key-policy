@@ -24,6 +24,10 @@
   "keys": {
     "newKey": "新建 Key",
     "refresh": "刷新",
+    "resetUsage": "重置额度",
+    "resettingUsage": "重置中…",
+    "resetUsageConfirm": "确认将所有 Key 的每日和每周已用额度归零？此操作不可撤销。",
+    "resetUsageFailed": "额度重置失败",
     "loading": "加载中…",
     "loadFailed": "加载失败",
     "empty": "还没有任何下游 key，点击“新建 Key”创建。",

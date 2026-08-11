@@ -446,6 +446,26 @@ func TestStopUsageFlusherFlushesWithoutWorker(t *testing.T) {
 	}
 }
 
+func TestResetAllUsageKeepsLiveCountersWhenPersistenceFails(t *testing.T) {
+	store, _ := newTestStore(t)
+	store.usage.RecordCost("team-a", "fast", 3, 0, 0, 0, 0, 1)
+
+	store.mu.Lock()
+	store.statePath = filepath.Join(t.TempDir(), "missing", "state.json")
+	store.mu.Unlock()
+	if err := os.WriteFile(filepath.Dir(store.StatePath()), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.ResetAllUsage(); err == nil {
+		t.Fatal("ResetAllUsage succeeded with an invalid state directory")
+	}
+	usage := store.UsageSummaryFor(store.Keys()[0])
+	if usage.DailyUSD != 3 || usage.WeeklyUSD != 3 {
+		t.Fatalf("usage after failed reset = %+v, want counters unchanged", usage)
+	}
+}
+
 // imgKey returns the KeyConfig for id (helper for tests that need a value, not
 // a pointer, for UsageSummaryFor).
 func imgKey(s *Store, id string) KeyConfig {

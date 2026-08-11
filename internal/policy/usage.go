@@ -264,6 +264,13 @@ func (l *usageLedger) resetUsage(id string) {
 	delete(l.entries, id)
 }
 
+// resetAllUsage clears every daily, weekly, per-model, and cache usage bucket.
+func (l *usageLedger) resetAllUsage() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = make(map[string]*UsageState)
+}
+
 // ModelUsageEntry is one row of the exact-model usage breakdown returned by
 // the key detail API.
 type ModelUsageEntry struct {

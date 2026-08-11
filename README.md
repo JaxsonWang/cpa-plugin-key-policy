@@ -33,7 +33,7 @@ It does **not** register `model.route`, a scheduler, or a response interceptor.
 - daily and rolling-weekly USD limits;
 - token pricing and fixed per-call pricing;
 - per-key/per-model usage and cost totals;
-- key create, edit, rotate, revoke, RPM reset, and usage UI;
+- key create, edit, rotate, revoke, RPM reset, global daily/weekly usage reset, and usage UI;
 - binary `allow_models_endpoint` policy for `GET /v1/models`.
 
 ### Removed
@@ -162,6 +162,7 @@ Exact plugin paths under `/v0/management/plugins/cpa-key-policy`:
 - `GET/POST/PATCH/DELETE /keys`;
 - `POST /keys/rotate`;
 - `POST /keys/reset-rpm`;
+- `POST /keys/reset-usage` (clears daily and weekly usage for every key);
 - `GET /keys/usage`;
 - `GET /status`.
 

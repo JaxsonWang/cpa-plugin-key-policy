@@ -6,7 +6,7 @@
       "name": "CPA Key Policy",
       "description": "Plugin-owned downstream API keys with direct-model allowlists, RPM and USD budgets, usage accounting, and an embedded management UI.",
       "author": "JaxsonWang",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "repository": "https://github.com/JaxsonWang/cpa-plugin-key-policy",
       "homepage": "https://github.com/JaxsonWang/cpa-plugin-key-policy",
       "license": "MIT",

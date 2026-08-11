@@ -24,6 +24,10 @@
   "keys": {
     "newKey": "新建 Key",
     "refresh": "重新整理",
+    "resetUsage": "重設額度",
+    "resettingUsage": "重設中…",
+    "resetUsageConfirm": "確認將所有 Key 的每日與每週已用額度歸零？此操作無法復原。",
+    "resetUsageFailed": "額度重設失敗",
     "loading": "載入中…",
     "loadFailed": "載入失敗",
     "empty": "尚未有任何下游 key，點擊「新建 Key」建立。",

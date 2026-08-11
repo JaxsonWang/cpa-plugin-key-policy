@@ -12,10 +12,11 @@ vi.mock("../api/keys", () => ({
   deleteKey: vi.fn(),
   rotateKey: vi.fn(),
   resetRPM: vi.fn(),
+  resetAllUsage: vi.fn(),
   setKeyEnabled: vi.fn(),
 }));
 
-import { listKeys, setKeyEnabled } from "../api/keys";
+import { listKeys, resetAllUsage, setKeyEnabled } from "../api/keys";
 import KeyList from "./KeyList";
 
 let container: HTMLDivElement;
@@ -128,5 +129,24 @@ describe("KeyList", () => {
     expect(container.querySelector<HTMLInputElement>('input[aria-label="选择 Key team-a"]')!.checked).toBe(false);
     expect(container.querySelector<HTMLInputElement>('input[aria-label="选择 Key team-b"]')!.checked).toBe(true);
     expect(container.textContent).toContain("1 个 Key 状态更新失败");
+  });
+
+  it("resets daily and weekly usage for all keys from the list header", async () => {
+    const confirmMock = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+    vi.mocked(resetAllUsage).mockResolvedValue();
+    await renderList([key("team-a"), key("team-b")]);
+
+    const resetUsage = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "重置额度")!;
+    await act(async () => {
+      resetUsage.click();
+      await tick();
+    });
+
+    expect(confirmMock).toHaveBeenCalledWith(
+      "确认将所有 Key 的每日和每周已用额度归零？此操作不可撤销。",
+    );
+    expect(resetAllUsage).toHaveBeenCalledTimes(1);
+    expect(listKeys).toHaveBeenCalledTimes(2);
   });
 });

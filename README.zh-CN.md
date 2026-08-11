@@ -33,7 +33,7 @@
 - 每日与滚动每周美元上限；
 - token 单价与固定按次计费；
 - 单 key/单模型用量及金额统计；
-- key 创建、编辑、轮换、撤销、RPM 重置与用量 UI；
+- key 创建、编辑、轮换、撤销、RPM 重置、全局每日/每周用量重置与用量 UI；
 - `GET /v1/models` 的二值 `allow_models_endpoint` 权限。
 
 ### 删除
@@ -85,7 +85,10 @@ https://raw.githubusercontent.com/JaxsonWang/cpa-plugin-key-policy/main/registry
 
 将该 URL 添加到 `plugins.store-sources`，然后选择 `JaxsonWang` 来源的
 `cpa-key-policy`。如果已经安装官方源中的 `origin652` 版本，需要先卸载该插件
-条目再切换商店来源；state file 独立于插件动态库，重新安装后会继续复用。
+条目再切换商店来源。卸载前先记录
+`plugins.configs.cpa-key-policy.state_file`，因为卸载会清除插件配置，但不会删除
+独立的 state file。安装 `JaxsonWang` 版本后，先恢复相同的 `state_file` 路径，
+再打开 Key Policy 页面核对原有 key 与用量数据。
 
 规范的 key policy：
 
@@ -158,6 +161,7 @@ VITE_CPA_BASE=http://127.0.0.1:8317 npm run dev
 - `GET/POST/PATCH/DELETE /keys`；
 - `POST /keys/rotate`；
 - `POST /keys/reset-rpm`；
+- `POST /keys/reset-usage`（清空所有 key 的每日与每周用量）；
 - `GET /keys/usage`；
 - `GET /status`。
 

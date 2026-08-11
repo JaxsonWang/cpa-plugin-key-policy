@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   deleteKey,
   listKeys,
+  resetAllUsage,
   resetRPM,
   rotateKey,
   setKeyEnabled,
@@ -28,6 +29,7 @@ export default function KeyList() {
   const [keys, setKeys] = useState<KeyPublic[]>([]);
   const [selectedIDs, setSelectedIDs] = useState<Set<string>>(new Set());
   const [updatingIDs, setUpdatingIDs] = useState<Set<string>>(new Set());
+  const [resettingUsage, setResettingUsage] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [plain, setPlain] = useState<string | null>(null);
@@ -70,6 +72,20 @@ export default function KeyList() {
       void load();
     } catch (error) {
       alert(errorMessage(error, t("keys.resetFailed")));
+    }
+  };
+
+  const onResetUsage = async () => {
+    if (!confirm(t("keys.resetUsageConfirm"))) return;
+    setResettingUsage(true);
+    setError("");
+    try {
+      await resetAllUsage();
+      await load();
+    } catch (error) {
+      setError(errorMessage(error, t("keys.resetUsageFailed")));
+    } finally {
+      setResettingUsage(false);
     }
   };
 
@@ -135,7 +151,7 @@ export default function KeyList() {
 
   const allSelected = keys.length > 0 && selectedIDs.size === keys.length;
   const partiallySelected = selectedIDs.size > 0 && !allSelected;
-  const busy = updatingIDs.size > 0;
+  const busy = updatingIDs.size > 0 || resettingUsage;
 
   const onToggleAll = () => {
     setSelectedIDs(allSelected ? new Set() : new Set(keys.map((key) => key.id)));
@@ -157,6 +173,13 @@ export default function KeyList() {
         <div className="fp-actions">
           <button className="btn sm" disabled={loading || busy} onClick={load}>
             {t("keys.refresh")}
+          </button>
+          <button
+            className="btn sm danger-outline"
+            disabled={loading || busy || keys.length === 0}
+            onClick={() => void onResetUsage()}
+          >
+            {resettingUsage ? t("keys.resettingUsage") : t("keys.resetUsage")}
           </button>
         </div>
       </div>
@@ -193,6 +216,13 @@ export default function KeyList() {
             </button>
             <button className="btn sm mobile-only" disabled={loading || busy} onClick={load}>
               {t("keys.refresh")}
+            </button>
+            <button
+              className="btn sm danger-outline mobile-only"
+              disabled={loading || busy}
+              onClick={() => void onResetUsage()}
+            >
+              {resettingUsage ? t("keys.resettingUsage") : t("keys.resetUsage")}
             </button>
           </div>
         </div>

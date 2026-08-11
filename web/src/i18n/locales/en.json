@@ -24,6 +24,10 @@
   "keys": {
     "newKey": "New Key",
     "refresh": "Refresh",
+    "resetUsage": "Reset usage",
+    "resettingUsage": "Resetting…",
+    "resetUsageConfirm": "Reset the used daily and weekly quota for every key? This cannot be undone.",
+    "resetUsageFailed": "Usage reset failed",
     "loading": "Loading…",
     "loadFailed": "Failed to load",
     "empty": "No downstream keys yet. Click \"New Key\" to create one.",
