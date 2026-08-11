@@ -1,7 +1,7 @@
 {
   "name": "cpa-key-policy-web",
   "private": true,
-  "version": "0.4.4",
+  "version": "0.5.0",
   "type": "module",
   "description": "Management UI for the cpa-key-policy CLIProxyAPI plugin.",
   "scripts": {
@@ -10,18 +10,18 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
+    "axios": "^1.7.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "axios": "^1.7.7"
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
+    "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/node": "^22.9.0",
     "@vitejs/plugin-react": "^4.3.3",
     "jsdom": "^25.0.1",
     "typescript": "^5.6.3",

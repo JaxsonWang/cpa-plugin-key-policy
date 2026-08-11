@@ -48,7 +48,7 @@ export async function resetRPM(id: string): Promise<void> {
   await c.post(pluginPath("/keys/reset-rpm"), { id });
 }
 
-// fetchKeyUsage returns the per-alias usage breakdown for one key (the key
+// fetchKeyUsage returns the per-model usage breakdown for one key (the key
 // detail subpage data source). id goes through the query string, matching the
 // rotate/reset-rpm/delete convention.
 export async function fetchKeyUsage(id: string): Promise<KeyUsageResponse> {
@@ -59,20 +59,20 @@ export async function fetchKeyUsage(id: string): Promise<KeyUsageResponse> {
   return data;
 }
 
-// Build ModelRule[] from selected catalog models with alias = target_model.
+// Build exact-model allow-list rules from catalog rows. Provider is discovery
+// metadata only and is intentionally not persisted into the policy.
 export function buildModelRules(
   selected: { provider: string; model: string }[],
-): { alias: string; provider: string; target_model: string }[] {
+): { model: string }[] {
   const seen = new Set<string>();
-  const out: { alias: string; provider: string; target_model: string }[] = [];
+  const out: { model: string }[] = [];
   for (const s of selected) {
-    const provider = s.provider.toLowerCase().trim();
-    const target = s.model.trim();
-    if (!provider || !target) continue;
-    const key = provider + "/" + target.toLowerCase();
+    const model = s.model.trim();
+    if (!model) continue;
+    const key = model.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ alias: target, provider, target_model: target });
+    out.push({ model });
   }
   return out;
 }

@@ -84,7 +84,7 @@ func TestComputeCost(t *testing.T) {
 	if !nearly(got, 10.5) {
 		t.Fatalf("cost = %v, want 10.5", got)
 	}
-	// Unknown alias (priced=false) → 0 cost.
+	// Unknown model (priced=false) → 0 cost.
 	if c := ComputeCost(3, 15, false, usage); c != 0 {
 		t.Fatalf("unpriced cost = %v, want 0", c)
 	}
@@ -94,14 +94,14 @@ func TestComputeCost(t *testing.T) {
 	}
 }
 
-func TestPriceForAlias(t *testing.T) {
-	k := &KeyConfig{Models: []ModelRule{{Alias: "fast", InputPricePerMillion: 2, OutputPricePerMillion: 8, CacheReadPricePerMillion: 0.2}}}
+func TestPriceForAliasCompatibility(t *testing.T) {
+	k := &KeyConfig{Models: []ModelRule{{Model: "fast", InputPricePerMillion: 2, OutputPricePerMillion: 8, CacheReadPricePerMillion: 0.2}}}
 	in, out, cache, ok := k.PriceForAlias("Fast") // case-insensitive
 	if !ok || in != 2 || out != 8 || cache != 0.2 {
 		t.Fatalf("got in=%v out=%v cache=%v ok=%v", in, out, cache, ok)
 	}
 	if _, _, _, ok := k.PriceForAlias("missing"); ok {
-		t.Fatal("missing alias should not be priced")
+		t.Fatal("missing model should not be priced")
 	}
 }
 
@@ -167,7 +167,7 @@ func TestComputeCacheCostNoCachePriceFallsBackToInput(t *testing.T) {
 	}
 }
 
-// TestComputeCacheCostUnpricedZero: unknown alias (priced=false) → 0 even with
+// TestComputeCacheCostUnpricedZero: unknown model (priced=false) → 0 even with
 // tokens and cache configured.
 func TestComputeCacheCostUnpricedZero(t *testing.T) {
 	detail := UsageDetail{InputTokens: 1_000_000, OutputTokens: 1_000_000, CachedTokens: 500_000}
@@ -249,7 +249,7 @@ func TestRecordUsageBillsFromParsedTokens(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "streamy", Enabled: true, DailyLimitUSD: 1.00,
 			KeyHash: hashForUsageTest(t, "cpa_stream"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	}); err != nil {
@@ -282,7 +282,7 @@ func TestRecordUsageUnknownKeyZeroCost(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "k", Enabled: true, DailyLimitUSD: 0.01,
 			KeyHash: hashForUsageTest(t, "cpa_known"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	}); err != nil {
@@ -309,7 +309,7 @@ func TestRecordUsageMatchesByID(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "team-x", Enabled: true, DailyLimitUSD: 0.50,
 			KeyHash: hashForUsageTest(t, "cpa_secret_xyz"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	}); err != nil {

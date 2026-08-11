@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchKeyUsage } from "../api/keys";
-import type { AliasUsageEntry, KeyUsageResponse, UsageWindow } from "../types";
+import type { KeyUsageResponse, ModelUsageEntry, UsageWindow } from "../types";
 import { useT } from "../i18n";
 import { MobileTabBar } from "./KeyList";
 
-// Window switch for the per-alias breakdown table: each alias row has its own
+// Window switch for the per-model breakdown table: each model row has its own
 // daily and rolling-weekly window, and the user toggles which one all rows
 // show at once. Mirrors the KeyList usage column's today/this-week framing.
 type Window = "daily" | "weekly";
@@ -78,19 +78,19 @@ export default function KeyUsage() {
   if (loading) return <div className="muted">{t("keyUsage.loading")}</div>;
   if (error || !data) return <div className="error">{error || t("keyUsage.notFound")}</div>;
 
-  const aliases = data.aliases ?? [];
-  const hasUsage = aliases.some((a) => (a.daily.call_count ?? 0) > 0 || (a.weekly.call_count ?? 0) > 0 || (a.daily.total_usd ?? 0) > 0 || (a.weekly.total_usd ?? 0) > 0);
+  const models = data.models ?? [];
+  const hasUsage = models.some((m) => (m.daily.call_count ?? 0) > 0 || (m.weekly.call_count ?? 0) > 0 || (m.daily.total_usd ?? 0) > 0 || (m.weekly.total_usd ?? 0) > 0);
 
-  const windowOf = (a: AliasUsageEntry): UsageWindow => (win === "daily" ? a.daily : a.weekly);
+  const windowOf = (m: ModelUsageEntry): UsageWindow => (win === "daily" ? m.daily : m.weekly);
 
-  // Mobile hero totals: sum across aliases for the active window.
-  const heroUsd = aliases.reduce((s, a) => s + (windowOf(a).total_usd ?? 0), 0);
-  const heroCalls = aliases.reduce((s, a) => s + (windowOf(a).call_count ?? 0), 0);
-  const heroInput = aliases.reduce((s, a) => s + (windowOf(a).input_tokens ?? 0), 0);
-  const heroOutput = aliases.reduce((s, a) => s + (windowOf(a).output_tokens ?? 0), 0);
+  // Mobile hero totals: sum across models for the active window.
+  const heroUsd = models.reduce((s, m) => s + (windowOf(m).total_usd ?? 0), 0);
+  const heroCalls = models.reduce((s, m) => s + (windowOf(m).call_count ?? 0), 0);
+  const heroInput = models.reduce((s, m) => s + (windowOf(m).input_tokens ?? 0), 0);
+  const heroOutput = models.reduce((s, m) => s + (windowOf(m).output_tokens ?? 0), 0);
   const heroLimit = win === "daily" ? data.daily_limit_usd : data.weekly_limit_usd;
   const heroPct = heroLimit > 0 ? Math.min(100, (heroUsd / heroLimit) * 100) : 0;
-  const maxAliasUsd = Math.max(1, ...aliases.map((a) => windowOf(a).total_usd ?? 0));
+  const maxModelUsd = Math.max(1, ...models.map((m) => windowOf(m).total_usd ?? 0));
 
   return (
     <div>
@@ -129,7 +129,7 @@ export default function KeyUsage() {
         </div>
       </div>
 
-      {/* Desktop: hero summary + per-alias table (unchanged) */}
+      {/* Desktop: hero summary + per-model table. */}
       <div className="usage-hero-d">
         <div className="uhd-tiles">
           <div className="uhd-tile">
@@ -163,9 +163,8 @@ export default function KeyUsage() {
         <table>
           <thead>
             <tr>
-              <th>{t("keyUsage.colAlias")}</th>
+              <th>{t("keyUsage.colModel")}</th>
               <th>{t("keyUsage.colBillingMode")}</th>
-              <th>{t("keyUsage.colProvider")}</th>
               <th className="num">{t("keyUsage.colUsd")}</th>
               <th className="num">{t("keyUsage.colCalls")}</th>
               <th className="num">{t("keyUsage.colInput")}</th>
@@ -175,25 +174,24 @@ export default function KeyUsage() {
             </tr>
           </thead>
           <tbody>
-            {aliases.length === 0 ? (
+            {models.length === 0 ? (
               <tr>
-                <td colSpan={9} className="muted keyusage-noalias">
-                  {t("keyUsage.noAlias")}
+                <td colSpan={8} className="muted keyusage-no-model">
+                  {t("keyUsage.noModel")}
                 </td>
               </tr>
             ) : (
-              aliases.map((a) => {
-                const w = windowOf(a);
+              models.map((m) => {
+                const w = windowOf(m);
                 return (
-                  <tr key={a.alias} className={a.in_config ? "" : "keyusage-residual"}>
+                  <tr key={m.model} className={m.in_config ? "" : "keyusage-residual"}>
                     <td>
-                      <div className="mono">{a.alias}</div>
-                      {!a.in_config && <span className="keyusage-badge">{t("keyUsage.notInConfig")}</span>}
+                      <div className="mono">{m.model}</div>
+                      {!m.in_config && <span className="keyusage-badge">{t("keyUsage.notInConfig")}</span>}
                     </td>
                     <td>
-                      <BillingTag mode={a.billing_mode} />
+                      <BillingTag mode={m.billing_mode} />
                     </td>
-                    <td className="muted">{a.provider || "—"}</td>
                     <td className="num strong">{fmtUsd(w.total_usd ?? 0)}</td>
                     <td className="num mono">{fmtInt(w.call_count ?? 0)}</td>
                     <td className="num mono">{fmtInt(w.input_tokens ?? 0)}</td>
@@ -235,24 +233,24 @@ export default function KeyUsage() {
           </div>
         </div>
 
-        <div className="section-label">{t("keyUsage.mobile.byAlias")}</div>
+        <div className="section-label">{t("keyUsage.mobile.byModel")}</div>
         <div className="bar-rank">
-          {aliases.length === 0 ? (
-            <div className="muted">{t("keyUsage.noAlias")}</div>
-          ) : aliases.map((a) => {
-            const w = windowOf(a);
+          {models.length === 0 ? (
+            <div className="muted">{t("keyUsage.noModel")}</div>
+          ) : models.map((m) => {
+            const w = windowOf(m);
             const usd = w.total_usd ?? 0;
-            const w2 = Math.max(2, (usd / maxAliasUsd) * 100);
-            const perCall = a.billing_mode === "per_call";
+            const w2 = Math.max(2, (usd / maxModelUsd) * 100);
+            const perCall = m.billing_mode === "per_call";
             return (
-              <div key={a.alias} className={"br-row" + (a.in_config ? "" : " br-residual")}>
+              <div key={m.model} className={"br-row" + (m.in_config ? "" : " br-residual")}>
                 <div className="br-top">
-                  <span className="br-name">{a.alias}{!a.in_config && <span className="br-badge">!</span>}</span>
+                  <span className="br-name">{m.model}{!m.in_config && <span className="br-badge">!</span>}</span>
                   <span className="br-usd">{fmtUsd(usd)}</span>
                 </div>
                 <div className="br-bar"><span style={{ width: w2 + "%" }} /></div>
                 <div className="br-cap">
-                  {a.provider || "—"} · {perCall ? t("keyUsage.billingPerCall") : t("keyUsage.billingTokens")} · {t("keys.mobile.callCount", { n: fmtInt(w.call_count ?? 0) })}
+                  {perCall ? t("keyUsage.billingPerCall") : t("keyUsage.billingTokens")} · {t("keys.mobile.callCount", { n: fmtInt(w.call_count ?? 0) })}
                 </div>
               </div>
             );

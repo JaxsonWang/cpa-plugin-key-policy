@@ -82,11 +82,8 @@
     "allowModelsLabel": "允許存取 /v1/models",
     "allowModelsTitle": "因 CPA 上游限制，插件無法按 key 過濾模型列表，只能整體放行或 401",
     "allowModelsHint": "CPA 上游無法按下游 key 過濾模型列表，故此處只能二選：放行（看到全局所有模型）或 401（隱藏列表）。",
-    "modelsLabel": "允許的模型（多選，別名自動 = 模型名）",
+    "modelsLabel": "允許的模型（精確名稱）",
     "priceLabel": "模型單價（美元 / 每百萬 token；留 0 = 不計費）",
-    "colAlias": "別名",
-    "colProvider": "Provider",
-    "colGroup": "檔位",
     "colBillingMode": "計費方式",
     "colBillingModeHint": "勾選切為「按次計費」：每次成功請求扣固定美元，與 token 無關；token 價保留但不生效，取消勾選即恢復。",
     "billingTokens": "按 token",
@@ -112,26 +109,17 @@
       "sectionLimits": "用量上限",
       "sectionAccess": "存取",
       "sectionModels": "模型與計價"
-    }
+    },
+    "colModel": "模型"
   },
   "picker": {
     "loading": "載入可用模型…",
     "loadFailed": "載入模型列表失敗",
     "empty": "未從 CPA 取到任何模型。請確認 CPA 已設定上游 provider。",
-    "searchPlaceholder": "搜尋 provider、檔位或模型名…",
-    "selected": "已選 {{count}} 個模型 · 別名自動等於模型名",
+    "searchPlaceholder": "搜尋 provider 或模型名…",
+    "selected": "已選擇 {{count}} 個模型",
     "selectAll": "全選",
-    "clearAll": "全清",
-    "tier": {
-      "free": "免費檔",
-      "plus": "Plus",
-      "team": "Team",
-      "pro": "Pro",
-      "enterprise": "Enterprise",
-      "supported": "無檔位標識",
-      "free-tier": "免費檔",
-      "classify": "自訂 · {{name}}"
-    }
+    "clearAll": "全清"
   },
   "plainModal": {
     "created": "Key 已建立",
@@ -155,13 +143,10 @@
     "loadFailed": "載入失敗",
     "notFound": "未找到該 key",
     "empty": "該 key 暫無用量記錄",
-    "noAlias": "該 key 未設定任何模型別名",
     "windowToggle": "用量窗口切換",
     "tabDaily": "今日",
     "tabWeekly": "本週",
-    "colAlias": "別名",
     "colBillingMode": "計費方式",
-    "colProvider": "Provider",
     "colUsd": "USD",
     "colCalls": "呼叫次數",
     "colInput": "Input tokens",
@@ -174,7 +159,6 @@
     "mobile": {
       "today": "今日",
       "thisWeek": "本週",
-      "byAlias": "依別名",
       "limit": "上限",
       "remaining": "剩餘",
       "calls": "呼叫",
@@ -188,7 +172,10 @@
       "maxRpm": "RPM 上限",
       "viewUsage": "查看用量明細",
       "tokenMix": "Token 構成",
-      "last7Days": "最近 7 天"
-    }
+      "last7Days": "最近 7 天",
+      "byModel": "依模型"
+    },
+    "noModel": "該 key 未設定任何模型",
+    "colModel": "模型"
   }
 }

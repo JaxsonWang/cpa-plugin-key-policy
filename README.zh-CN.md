@@ -1,115 +1,70 @@
 # cpa-key-policy（中文说明）
 
-面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 的**下游 API Key 策略插件**。
+面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 的 WebSocket 兼容下游 API Key 策略插件。
 
-用人话说：你可以给客户发自己的 `cpa_…` 钥匙。每把钥匙只能用你允许的模型，还能限速、限额，并转到 CPA 真实上游（Codex、Claude、openai-compatibility 通道等）。CPA 自带的 `api-keys` 仍可留给管理员；**不要把插件下发的 key 再写进 `api-keys`**，否则会绕过本插件策略。
+插件签发 `cpa_…` key，在不覆盖 CPA 模型解析的前提下执行精确模型白名单、RPM、每日/每周预算以及 token/按次计费。
 
 | | |
 |---|---|
-| **仓库** | [origin652/cpa-plugin-key-policy](https://github.com/origin652/cpa-plugin-key-policy) |
+| **仓库** | [JaxsonWang/cpa-plugin-key-policy](https://github.com/JaxsonWang/cpa-plugin-key-policy) |
 | **协议** | MIT |
-| **安装** | [CLIProxyAPI 插件商店](https://github.com/router-for-me/CLIProxyAPI-Plugins-Store) 或自行编译 |
 | **English** | [README.md](./README.md) |
 
----
+## v0.5.0 行为
 
-## 它能干什么
+核心不变量：
 
-1. **发钥匙** — 批量创建下游 key，每把绑定可用模型 / 别名。  
-2. **做映射** — 客户端写 `model: fast`，插件转到例如 `codex` + `gpt-5.4-mini`。  
-3. **做限制** — 单 key 的 RPM、可选每日/每周美元额度，按 token 或按次计费。  
-4. **凭证分档 / 归类** — 请求可以钉死在 Codex free/team 等内置档，或你自定义的归类组，**不会串到别的凭证文件**。  
-5. **多目标别名** — 一个别名挂多个后端（优先 或 轮询）。  
-6. **网页管理** — 在 CPA 里管 key、全局别名、凭证归类。  
+> 插件不再路由或改写模型。客户端必须发送 CPA 能原生解析的真实模型名；插件只判断该精确模型名是否允许。
 
----
+这样 CPA 可以继续使用原生 Responses WebSocket。插件只注册：
 
-## 核心概念
+- 前端鉴权；
+- 请求拦截；
+- 用量统计；
+- 管理 API 与内嵌 UI。
 
-### 下游 Key
+不再注册 `model.route`、scheduler 或响应拦截器。
 
-插件自己发的密钥（`cpa_…`），只由本插件鉴权。上面可以配置：
+### 保留
 
-- 允许的 **模型** 和/或 **别名**
-- RPM
-- 每日 / 每周美元上限（可选）
-- 是否允许主端口访问 `/v1/models`（见下文）
+- `cpa_…` key 鉴权；
+- 精确且大小写不敏感的模型白名单；
+- 单 key RPM；
+- 每日与滚动每周美元上限；
+- token 单价与固定按次计费；
+- 单 key/单模型用量及金额统计；
+- key 创建、编辑、轮换、撤销、RPM 重置与用量 UI；
+- `GET /v1/models` 的二值 `allow_models_endpoint` 权限。
 
-### 别名（全局映射表）
+### 删除
 
-可复用的名字，例如 `fast`，展开成一条或多条 **目标**：
+- 别名及模型名改写；
+- 指定 provider；
+- 多目标 priority/round-robin；
+- 凭证 group/tier 调度；
+- 自定义凭证分类；
+- 插件侧 catalog 聚合。
 
-| 字段 | 含义 |
-|------|------|
-| `provider` | CPA 提供商标识（`codex`、`claude`，或 openai-compatibility 的 **name**，如 `cerebras`） |
-| `target_model` | 上游真实模型 id |
-| `group` | 可选，限制用哪一类凭证（见下节） |
-| `dispatch` | `priority`（始终尝试第一个）或 `round-robin`（轮询） |
-| 计费 | `tokens`（百万 token 单价）或 `per_call`（每次固定金额） |
+模型选择器中的 provider 只用于展示 CPA 发现结果，不写入 key policy，也不参与运行时路由。
 
-Key 可以**引用**别名，不必重复填目标。多目标别名会展开成多条同名规则；**同一次请求**里鉴权与路由共用同一次选择，保证 `group` 与真实目标一致。
+## WebSocket 修复原理
 
-### 凭证组：内置档位 + 自定义归类
+旧版 `model.route` 返回已处理的模型覆盖后，CPA 会关闭该请求的原生 WebSocket passthrough。带 `previous_response_id` / `response.append` 的增量帧可能要求 HTTP replay，日志出现：
 
-| 类型 | 选择器里长什么样 | 写进映射的 group |
-|------|------------------|------------------|
-| **内置档**（Codex `plan_type`、Antigravity `tier`） | 如「免费档 / Team」 | 裸名：`free`、`team`、`supported` |
-| **自定义归类** | 如 **「自定义 · vip」** | 带前缀：`classify:vip` |
-
-**运行时规则：** 映射里写了 group，调度就**只**在该组凭证里选文件。没有可用文件 → 直接失败（`auth_not_found`），**绝不**偷偷落到其他档。
-
-**自定义归类**（网页 → 映射 → 凭证归类）：
-
-- 用正则匹配凭证字段（`filename`、`provider`、`plan_type`、`tier` 等）。
-- 规则上保存你起的**组名**（裸名）。
-- 目录与映射使用 `classify:组名`，避免和内置的 `free`/`team` 撞名。
-- 一个文件可命中**多个**自定义组（选择器里每组都会出现）。
-- 没命中自定义规则 → Codex/Antigravity 走内置档；其它 auth-file 渠道默认扁平（无组）。
-- openai-compat / API Key 类通道保持**扁平**，不拆组。
-
-一般在网页或管理 API 配置即可，不必手改 state JSON。
-
-### openai-compatibility 通道
-
-CPA 里配置的兼容通道，映射时 `provider` 填通道 **name**。插件路由时会对应到主机内部的 `openai-compatible-<name>`。通道配置里的 **models 列表要写全**，否则主机会报「该模型无可用 auth」。
-
----
-
-## 插件能力一览
-
-| 钩子 | 作用 |
-|------|------|
-| 前端鉴权 | 识别插件 key；校验别名、RPM、额度；写入路由与 group 元数据 |
-| 模型路由 | 别名 → provider + 目标模型 |
-| 调度 | 有 group 时按档位 / `classify:` 过滤凭证 |
-| 响应拦截 | 非流式 JSON：把顶层 `model` 改回别名 |
-| 用量 | token / 按次计费写入 state |
-| 管理 API + 内嵌网页 | Key、别名、归类、状态 |
-
----
-
-## 编译
-
-Linux `.so` 需要 cgo：
-
-```bash
-make test
-make build-linux          # 先编前端，再编 linux amd64/arm64 .so
-# 或
-make web-build
-GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -buildvcs=false -tags cshared \
-  -buildmode=c-shared -o dist/cpa-key-policy_linux_amd64.so ./cmd/cpa-key-policy
+```text
+1012 upstream requires HTTP replay
 ```
 
-Windows 上请用 WSL/Linux 编 `.so`。`go test ./...` 可用非 cgo stub，不依赖动态库工具链。
+v0.5.0 让 CPA 原生解析真实模型：
 
-把 `.so` 放进 CPA 的 `plugins.dir`，并在配置里启用插件。
-
----
+1. HTTP WebSocket Upgrade 阶段只确认 `cpa_…` key 存在且启用；Upgrade 没有模型执行，因此不消耗 RPM。
+2. 每个 WebSocket 执行帧进入 `request.intercept_before` 后，使用原始 Authorization header 检查真实模型、RPM 与预算。
+3. 普通 HTTP 请求继续在前端鉴权阶段完整校验，request interceptor 不重复计数。
+4. 未知 key 或 CPA 原生 key 交给其他 CPA 鉴权 provider，不受本插件干扰。
 
 ## 配置
 
-最小形态（完整示例见 [`config.example.yaml`](./config.example.yaml)）：
+CLIProxyAPI 插件配置：
 
 ```yaml
 plugins:
@@ -122,56 +77,81 @@ plugins:
       state_file: "cpa-key-policy-state.json"
 ```
 
-说明：
+规范的 key policy：
 
-- 若已有 `state_file`，则以其中的 keys / 别名 / 归类 / 用量为准。
-- 日常请用**网页**或管理 API 建 key 和别名；YAML 种子数据主要用于首次启动。
-- 公开文档里不要写真实管理密钥、主机名或凭证内容。
+```yaml
+enabled: true
+state_file: ./cpa-key-policy-state.json
 
----
-
-## 网页管理界面
-
-插件内嵌。加载后访问：
-
-```text
-http://<你的-cpa-主机>:<api端口>/v0/resource/plugins/cpa-key-policy/index.html
+keys:
+  - id: team-a
+    name: Team A
+    enabled: true
+    key_hash: "sha256:REPLACE_WITH_SHA256_HEX"
+    key_preview: "cpa_..."
+    rpm: 60
+    daily_limit_usd: 10
+    weekly_limit_usd: 50
+    allow_models_endpoint: false
+    models:
+      - model: gpt-5.4
+        billing_mode: tokens
+        input_price_per_million: 2
+        output_price_per_million: 8
+        cache_read_price_per_million: 0.2
 ```
 
-用 CPA **管理密钥**登录（`remote-management.secret-key` 或管理密码）。密钥只放在内存，不写 `localStorage`；刷新页面需重新登录。
+优先使用网页或管理 API 生成 key；明文只返回一次。插件 key 不要再加入 CPA 原生 `api-keys`，否则会形成另一条原生鉴权路径。
 
-| 区域 | 用途 |
-|------|------|
-| Keys | 创建/编辑/轮换/删除 key；绑模型或别名；RPM 与额度 |
-| 映射 → 别名 | 全局多目标别名、调度方式、定价 |
-| 映射 → 凭证归类 | 自定义分组规则与命中预览 |
-| 选模型 | 提供商目录；内置档 / **自定义 · …** 子组 |
+已有 state file 时，其中的 keys 与 usage 是运行时数据源。种子格式见 [`config.example.yaml`](./config.example.yaml)。
 
-不重编 `.so` 时开发前端：
+## 从 v0.4.x 升级
+
+v0.5.0 state 版本为 `2`，加载旧配置/状态时自动迁移：
+
+- 旧直连规则的 `target_model` 迁移为 `{model: target_model}`；
+- 旧全局别名的每个 target 迁移成一个真实模型；
+- 多 target 拆成多个允许的真实模型；
+- 同名真实模型去重；
+- 删除 alias/provider/group 路由字段；
+- 保留定价；
+- 旧 `usage.by_alias` 作为历史 residual 保留，因为旧别名无法可靠归属到某一个 target model。
+
+升级后：
+
+- 客户端必须发送真实 CPA 模型名，旧别名请求名不再生效；
+- 如需回滚，首次使用 v0.5.0 前先备份 state file；
+- 新建 Codex session 或重启客户端，旧 session 可能已经缓存 SSE fallback。
+
+## 管理网页
+
+插件加载后访问：
+
+```text
+http://HOST:PORT/v0/resource/plugins/cpa-key-policy/index.html
+```
+
+使用 CPA management secret 登录。网页保留 key 管理、真实模型选择、定价、预算/RPM 与按模型用量；管理密钥只保存在内存，不写 `localStorage`。
+
+开发模式：
 
 ```bash
 cd web
-npm install
+npm ci
 VITE_CPA_BASE=http://127.0.0.1:8317 npm run dev
 ```
 
----
+## 管理 API
 
-## 管理 API 摘要
+`/v0/management/plugins/cpa-key-policy` 下只保留：
 
-路径为精确匹配。鉴权：CPA 管理 Bearer。
+- `GET/POST/PATCH/DELETE /keys`；
+- `POST /keys/rotate`；
+- `POST /keys/reset-rpm`；
+- `GET /keys/usage`；
+- `GET /status`。
 
-**Key：** `GET/POST/PATCH/DELETE …/keys`，以及 `rotate` / `reset-rpm` / `usage` / `status`  
-
-**别名：** `GET/POST/DELETE …/aliases`  
-
-**归类：**  
-
-- `…/classify-rules`（含 reorder）  
-- `POST …/classify-preview` — 预览组 → 凭证 id（组名为规则裸名）  
-- `POST …/catalog` — 前端提交 auth-file + 模型列表，返回带 `classify:` 的选择器条目  
-
-创建 key（`plain_key` **只返回一次**）：
+创建 key，`plain_key` 只返回一次：
 
 ```bash
 curl -X POST "$CPA/v0/management/plugins/cpa-key-policy/keys" \
@@ -181,67 +161,48 @@ curl -X POST "$CPA/v0/management/plugins/cpa-key-policy/keys" \
     "id": "team-a",
     "name": "Team A",
     "rpm": 60,
+    "daily_limit_usd": 10,
+    "weekly_limit_usd": 50,
     "models": [
-      {"alias":"fast","provider":"codex","target_model":"gpt-5.4-mini","group":"free"}
+      {
+        "model": "gpt-5.4",
+        "billing_mode": "tokens",
+        "input_price_per_million": 2,
+        "output_price_per_million": 8,
+        "cache_read_price_per_million": 0.2
+      }
     ]
   }'
 ```
 
-多目标别名示例：
-
-```bash
-curl -X POST "$CPA/v0/management/plugins/cpa-key-policy/aliases" \
-  -H "Authorization: Bearer $MANAGEMENT_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "alias": "cheap-chat",
-    "dispatch": "priority",
-    "billing_mode": "tokens",
-    "targets": [
-      {"provider":"cerebras","target_model":"gpt-oss-120b"},
-      {"provider":"codex","target_model":"gpt-5.4-mini","group":"free"}
-    ]
-  }'
-```
-
----
-
-## 客户端请求行为
-
-| 情况 | 结果 |
-|------|------|
-| 认识的 key + 允许的别名 | 鉴权通过 → 路由 → 可选 group 过滤 → 上游 |
-| 不允许的模型名 | 鉴权失败 |
-| 超 RPM / 额度 | 拒绝 |
-| 写了 group 但组内无可用凭证 | `auth_not_found` / 不可用（不串档） |
-| 不认识的 key | 插件放弃，CPA 可尝试原生 `api-keys` |
-| 非流式对话响应 | 顶层 `model` 改回别名 |
-| 流式 | v1 不改写 body |
-
-### 主端口的 `/v1/models`
-
-每 key 的 `allow_models_endpoint` 是**开关**：拒绝（401）或看**全局完整列表**。主端口无法按插件 key 过滤列表。
-
-
----
-
-## 上手清单
-
-1. 编译/安装 `.so` 到 CPA `plugins.dir`。  
-2. 启用 `plugins` 与 `cpa-key-policy`，配置 `state_file`。  
-3. 用管理密钥打开网页 UI。  
-4. （可选）配置**凭证归类**规则。  
-5. 建**别名**（多目标/定价）和/或给 key 勾选模型（含档位或「自定义 · …」）。  
-6. 创建 key，保存一次性 `plain_key`，发给客户。  
-7. 客户：OpenAI 兼容 base URL = CPA；`Bearer cpa_…`；`model` = 别名。  
-8. openai-compat 通道务必声明 models，否则会「无 auth」。
-
----
-
-## 测试
+## 构建与测试
 
 ```bash
 go test ./...
-cd web && npm test && npm run build
+
+gofmt -w internal/plugin internal/policy
+go vet ./...
+go test -race ./internal/policy ./internal/plugin
+
+cd web
+npm ci
+npm test
+npm run typecheck
+npm run build
 ```
 
+构建内嵌网页和 Linux 共享库：
+
+```bash
+make web-build
+make build-linux-amd64
+# 或：make build-linux
+```
+
+## WebSocket 验收
+
+1. 安装新插件并重启 CPA。
+2. 使用 `Authorization: Bearer cpa_…` 和真实模型名（如 `gpt-5.4`）创建新的 Codex session。
+3. 至少连续完成两个 turn，覆盖 `previous_response_id` / `response.append`。
+4. 确认 RPM/usage 按执行帧计数，而不是按 Upgrade 计数。
+5. 确认新 session 的 CPA 日志不再出现 `1012 upstream requires HTTP replay`。

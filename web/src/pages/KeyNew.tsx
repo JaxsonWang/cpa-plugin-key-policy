@@ -17,7 +17,7 @@ export default function KeyNew() {
 
   // When the standalone model-picker page returns here with a selection,
   // merge it into the form's initial models. Pricing rows for newly-picked
-  // aliases start at 0; preserved aliases keep their existing rows via
+  // models start at 0; preserved models keep their existing rows via
   // KeyForm's price-map init from `initial.models`.
   const picked = (loc.state as { pickedModels?: ModelRule[] } | null)?.pickedModels;
   const initial = useMemo<KeyPublic | undefined>(

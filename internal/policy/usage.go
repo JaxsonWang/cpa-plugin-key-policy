@@ -13,7 +13,7 @@ const (
 )
 
 // usageLedger tracks per-key dollar usage with a daily window (UTC midnight
-// reset) and a rolling 7-day weekly window. Usage is also broken down per alias.
+// reset) and a rolling 7-day weekly window. Usage is also broken down per exact model.
 //
 // It is the in-memory source of truth; a background flusher periodically
 // persists it to the state JSON (see Store.persistUsage). Reads for limit
@@ -92,8 +92,8 @@ func (l *usageLedger) ensureWeeklyWindowLocked(st *UsageState, now time.Time) {
 	}
 }
 
-// ensureAliasWindow applies the same window logic to a per-alias daily/weekly slice.
-func (l *usageLedger) ensureAliasWindowLocked(w *UsageWindow, daily bool, now time.Time) {
+// ensureModelWindow applies the same window logic to a per-model daily/weekly slice.
+func (l *usageLedger) ensureModelWindowLocked(w *UsageWindow, daily bool, now time.Time) {
 	if daily {
 		startOfDay := now.UTC().Truncate(dayWindow)
 		if w.WindowStart.IsZero() || !sameDay(w.WindowStart, startOfDay) {
@@ -112,8 +112,8 @@ func sameDay(a, b time.Time) bool {
 	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
 }
 
-// RecordCost adds a dollar amount for a key+alias to the daily, weekly, and
-// per-alias buckets, advancing windows as needed. It also accumulates the
+// RecordCost adds a dollar amount for a key+model to the daily, weekly, and
+// per-model buckets, advancing windows as needed. It also accumulates the
 // cache-specific counters (cache-read tokens, cache spend, non-cache input
 // tokens) used for the cache hit-rate / spend report — these do NOT feed limit
 // enforcement, only the Summary the UI reads.
@@ -127,7 +127,7 @@ func sameDay(a, b time.Time) bool {
 // count for the record; inputTokens is the non-cache input-token count charged
 // at the regular input price (the denominator partner for hit-rate);
 // outputTokens is the completion-token count charged at the output price.
-func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, cacheReadTokens, inputTokens, outputTokens int64, callCount int64) {
+func (l *usageLedger) RecordCost(id, model string, amount, cacheCost float64, cacheReadTokens, inputTokens, outputTokens int64, callCount int64) {
 	if id == "" {
 		return
 	}
@@ -158,22 +158,22 @@ func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, ca
 		st.Weekly.OutputTokens += outputTokens
 	}
 
-	aliasEntry := st.ByAlias[alias]
-	l.ensureAliasWindowLocked(&aliasEntry.Daily, true, now)
-	l.ensureAliasWindowLocked(&aliasEntry.Weekly, false, now)
-	aliasEntry.Daily.TotalUSD += amount
-	aliasEntry.Weekly.TotalUSD += amount
-	aliasEntry.Daily.CallCount += callCount
-	aliasEntry.Weekly.CallCount += callCount
-	aliasEntry.Daily.CacheReadTokens += cacheReadTokens
-	aliasEntry.Weekly.CacheReadTokens += cacheReadTokens
-	aliasEntry.Daily.CacheCostUSD += cacheCost
-	aliasEntry.Weekly.CacheCostUSD += cacheCost
-	aliasEntry.Daily.InputTokens += inputTokens
-	aliasEntry.Weekly.InputTokens += inputTokens
-	aliasEntry.Daily.OutputTokens += outputTokens
-	aliasEntry.Weekly.OutputTokens += outputTokens
-	st.ByAlias[alias] = aliasEntry
+	modelEntry := st.ByAlias[model]
+	l.ensureModelWindowLocked(&modelEntry.Daily, true, now)
+	l.ensureModelWindowLocked(&modelEntry.Weekly, false, now)
+	modelEntry.Daily.TotalUSD += amount
+	modelEntry.Weekly.TotalUSD += amount
+	modelEntry.Daily.CallCount += callCount
+	modelEntry.Weekly.CallCount += callCount
+	modelEntry.Daily.CacheReadTokens += cacheReadTokens
+	modelEntry.Weekly.CacheReadTokens += cacheReadTokens
+	modelEntry.Daily.CacheCostUSD += cacheCost
+	modelEntry.Weekly.CacheCostUSD += cacheCost
+	modelEntry.Daily.InputTokens += inputTokens
+	modelEntry.Weekly.InputTokens += inputTokens
+	modelEntry.Daily.OutputTokens += outputTokens
+	modelEntry.Weekly.OutputTokens += outputTokens
+	st.ByAlias[model] = modelEntry
 }
 
 // UsageSummary is what the keys-list API reports for a key. The cache fields are
@@ -264,15 +264,10 @@ func (l *usageLedger) resetUsage(id string) {
 	delete(l.entries, id)
 }
 
-// AliasUsageEntry is one row of the per-alias usage breakdown reported by the
-// key detail API. Configured aliases appear with InConfig=true (zero values
-// when unused); aliases with historical usage that are no longer in the key's
-// config appear with InConfig=false. Daily/Weekly are the current (re-evaluated)
-// windows for that alias.
-type AliasUsageEntry struct {
-	Alias       string      `json:"alias"`
-	Provider    string      `json:"provider,omitempty"`
-	TargetModel string      `json:"target_model,omitempty"`
+// ModelUsageEntry is one row of the exact-model usage breakdown returned by
+// the key detail API.
+type ModelUsageEntry struct {
+	Model       string      `json:"model"`
 	BillingMode string      `json:"billing_mode,omitempty"`
 	PerCallUSD  float64     `json:"per_call_usd,omitempty"`
 	InConfig    bool        `json:"in_config"`
@@ -280,23 +275,21 @@ type AliasUsageEntry struct {
 	Weekly      UsageWindow `json:"weekly"`
 }
 
-// AliasUsage returns a per-alias usage breakdown for a key: configured aliases
-// (zero values when unused) merged with ledger residuals (aliases that have
+// ModelUsage returns a per-model usage breakdown for a key: configured models
+// (zero values when unused) merged with ledger residuals (models that have
 // historical usage but are no longer in the key's config, InConfig=false).
 // Windows are re-evaluated on read so an aged-out weekly total resets for
 // display (the read does not mutate the ledger; the next write commits the
 // reset, mirroring Summary). Rows are sorted by alias for stable display.
-func (l *usageLedger) AliasUsage(key KeyConfig) []AliasUsageEntry {
+func (l *usageLedger) ModelUsage(key KeyConfig) []ModelUsageEntry {
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	byAlias := make(map[string]AliasUsageEntry, len(key.Models))
+	byModel := make(map[string]ModelUsageEntry, len(key.Models))
 	for _, rule := range key.Models {
-		byAlias[rule.Alias] = AliasUsageEntry{
-			Alias:       rule.Alias,
-			Provider:    rule.Provider,
-			TargetModel: rule.TargetModel,
+		byModel[rule.Model] = ModelUsageEntry{
+			Model:       rule.Model,
 			BillingMode: rule.BillingMode,
 			PerCallUSD:  rule.PerCallUSD,
 			InConfig:    true,
@@ -304,25 +297,25 @@ func (l *usageLedger) AliasUsage(key KeyConfig) []AliasUsageEntry {
 	}
 
 	if st := l.entries[key.ID]; st != nil {
-		for alias, w := range st.ByAlias {
+		for model, w := range st.ByAlias {
 			// Re-evaluate windows on a local copy so a stale weekly total resets
 			// for display without mutating the ledger.
-			l.ensureAliasWindowLocked(&w.Daily, true, now)
-			l.ensureAliasWindowLocked(&w.Weekly, false, now)
-			entry, ok := byAlias[alias]
+			l.ensureModelWindowLocked(&w.Daily, true, now)
+			l.ensureModelWindowLocked(&w.Weekly, false, now)
+			entry, ok := byModel[model]
 			if !ok {
-				entry = AliasUsageEntry{Alias: alias, InConfig: false}
+				entry = ModelUsageEntry{Model: model, InConfig: false}
 			}
 			entry.Daily = w.Daily
 			entry.Weekly = w.Weekly
-			byAlias[alias] = entry
+			byModel[model] = entry
 		}
 	}
 
-	out := make([]AliasUsageEntry, 0, len(byAlias))
-	for _, entry := range byAlias {
+	out := make([]ModelUsageEntry, 0, len(byModel))
+	for _, entry := range byModel {
 		out = append(out, entry)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Alias < out[j].Alias })
+	sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
 	return out
 }

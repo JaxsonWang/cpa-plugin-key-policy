@@ -1,7 +1,7 @@
 // Community price hints from LiteLLM's public model price table.
 //
-// The user picks CPA provider models in the key form. Each selected
-// ModelRule has an `alias` equal to the upstream `target_model` name. We offer an
+// The user picks CPA models in the key form. Each selected ModelRule stores the
+// exact model name that CPA resolves natively. We offer an
 // optional "recommend" affordance per row: if LiteLLM's table has a matching model
 // entry, the user can one-click fill that row's input/output/cache-read prices
 // (per million tokens).
@@ -10,7 +10,7 @@
 //   - DO NOT pre-fill. Prices stay 0 until the user explicitly clicks "recommend".
 //   - Front-end fetches the raw JSON directly (no backend route, nothing embedded
 //     in the .so). Cached in sessionStorage with a 24h TTL.
-//   - Match `target_model` against LiteLLM top-level keys, case-insensitive. No
+//   - Match `model` against LiteLLM top-level keys, case-insensitive. No
 //     provider second-pass, no fuzzy/substring matching. Miss → no recommend.
 //   - Map LiteLLM `input_cost_per_token`/`output_cost_per_token`/
 //     `cache_read_input_token_cost` (per-token USD) to the form's per-million

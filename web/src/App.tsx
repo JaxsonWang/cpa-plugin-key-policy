@@ -8,7 +8,6 @@ import KeyNew from "./pages/KeyNew";
 import KeyEdit from "./pages/KeyEdit";
 import KeyUsage from "./pages/KeyUsage";
 import ModelPick from "./pages/ModelPick";
-import Mapping, { AliasEditForm, RuleEditForm } from "./pages/Mapping";
 
 function useAuthTick() {
   const [, setTick] = useState(0);
@@ -28,7 +27,6 @@ function TopNav() {
   // Active state: highlight the nav item matching the current path prefix.
   const onKeys = loc.pathname === "/keys" || loc.pathname.startsWith("/keys/");
   const onNew = loc.pathname === "/keys/new" || loc.pathname.startsWith("/keys/new/");
-  const onMapping = loc.pathname === "/mapping" || loc.pathname.startsWith("/mapping/");
   return (
     <div className="topnav">
       <div className="topnav-inner">
@@ -39,7 +37,6 @@ function TopNav() {
         <div className="topnav-actions">
           <Link to="/keys" className={"tn-link" + (onKeys && !onNew ? " active" : "")}>{t("header.keyList")}</Link>
           <Link to="/keys/new" className={"tn-link" + (onNew ? " active" : "")}>{t("header.newKey")}</Link>
-          <Link to="/mapping" className={"tn-link" + (onMapping ? " active" : "")}>{t("header.mapping")}</Link>
           <button
             className="btn sm"
             onClick={() => { clearSession(); nav("/login"); }}
@@ -92,11 +89,7 @@ function Shell() {
         <Route path="/keys/new/models" element={<ModelPick />} />
         <Route path="/keys/:id/edit" element={<KeyEdit />} />
         <Route path="/keys/:id/edit/models" element={<ModelPick />} />
-        <Route path="/mapping/pick-target" element={<ModelPick />} />
         <Route path="/keys/:id/usage" element={<KeyUsage />} />
-        <Route path="/mapping" element={<Mapping />} />
-        <Route path="/mapping/alias/:aliasName" element={<AliasEditForm />} />
-        <Route path="/mapping/rule/:ruleName" element={<RuleEditForm />} />
         <Route path="*" element={<Navigate to="/keys" replace />} />
       </Routes>
     </div>

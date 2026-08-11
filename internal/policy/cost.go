@@ -36,6 +36,7 @@ func isCacheAdditiveProvider(provider string) bool {
 // already parsed from the upstream response (including the final usage frame of
 // a stream). Only the fields we bill on are tracked here.
 type UsageDetail struct {
+	Provider            string
 	InputTokens         int64
 	OutputTokens        int64
 	ReasoningTokens     int64
@@ -204,25 +205,30 @@ func toInt(v any) int {
 	return 0
 }
 
-// PriceForAlias looks up the configured per-million-token prices for an alias
-// on this key. Returns ok=false when the alias has no rule (unknown alias) —
-// callers treat unknown aliases as zero-cost (billed at 0, not blocked).
-func (k *KeyConfig) PriceForAlias(alias string) (inputPerMillion, outputPerMillion, cacheReadPerMillion float64, ok bool) {
-	alias = strings.TrimSpace(alias)
-	if alias == "" {
+// PriceForModel looks up the configured per-million-token prices for an exact
+// model on this key. Unknown models are not billed by this helper.
+func (k *KeyConfig) PriceForModel(model string) (inputPerMillion, outputPerMillion, cacheReadPerMillion float64, ok bool) {
+	model = strings.TrimSpace(model)
+	if model == "" {
 		return 0, 0, 0, false
 	}
 	for _, rule := range k.Models {
-		if strings.EqualFold(rule.Alias, alias) {
+		if strings.EqualFold(strings.TrimSpace(rule.Model), model) {
 			return rule.InputPricePerMillion, rule.OutputPricePerMillion, rule.CacheReadPricePerMillion, true
 		}
 	}
 	return 0, 0, 0, false
 }
 
-// ComputeCost converts token usage into a dollar amount using the alias's prices.
+// PriceForAlias is kept as a source-compatibility shim for callers compiled
+// against v0.4.x. The runtime no longer routes aliases.
+func (k *KeyConfig) PriceForAlias(alias string) (float64, float64, float64, bool) {
+	return k.PriceForModel(alias)
+}
+
+// ComputeCost converts token usage into a dollar amount using the model rule's prices.
 // Prices are USD per 1M tokens; cost = (tokens / 1_000_000) * price.
-// Unknown alias (ok=false) → 0 cost (unpriced requests are not billed).
+// Unknown model (ok=false) → 0 cost (unpriced requests are not billed).
 // This path does not see cache breakdown (it bills from a parsed response body
 // with only prompt/completion counts); cache-aware billing lives in
 // ComputeCacheCost, used by the usage.handle path that carries full token detail.
@@ -235,8 +241,8 @@ func ComputeCost(inputPerMillion, outputPerMillion float64, priced bool, usage T
 }
 
 // ComputeCacheCost is the cache-aware biller for the usage.handle path. It takes
-// the full token detail (with cache breakdown) plus the alias's prices and the
-// owning rule's provider, and prices cache-hit input tokens at the cache-read
+// the full token detail (with cache breakdown) plus the model rule's prices and CPA's
+// actual upstream provider, and prices cache-hit input tokens at the cache-read
 // price instead of the regular input price. Provider semantics:
 //
 //   - Additive providers (Anthropic/Claude): cache-read tokens are reported

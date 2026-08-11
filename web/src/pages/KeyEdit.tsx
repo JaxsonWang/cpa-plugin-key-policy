@@ -37,7 +37,7 @@ export default function KeyEdit() {
 
   // When the model-picker page returns, merge its selection into the loaded
   // key's models, preserving everything else (id/name/limits/prices). The
-  // KeyForm price-map init keeps existing rows for aliases that survived.
+  // KeyForm price-map init keeps existing rows for models that survived.
   const picked = (loc.state as { pickedModels?: ModelRule[] } | null)?.pickedModels;
   const initial = useMemo<KeyPublic | null>(() => {
     if (!key) return null;

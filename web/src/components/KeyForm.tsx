@@ -1,10 +1,8 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { KeyPublic, ModelRule, AliasMapping } from "../types";
+import type { KeyPublic, ModelRule } from "../types";
 import ModelPicker from "./ModelPicker";
 import { getPriceTable, lookupPrice, type PriceTable } from "../store/modelPrices";
-import { fetchAliases } from "../api/mappings";
-import { formatTierLabel } from "../api/models";
 import { useT } from "../i18n";
 
 export interface KeyFormValues {
@@ -41,7 +39,7 @@ interface Props {
   onDanger?: () => void;
 }
 
-// Pricing for a single alias, kept in form state alongside the model selection.
+// Pricing for a single model, kept in form state alongside the selection.
 interface PriceRow {
   input_price_per_million: number;
   output_price_per_million: number;
@@ -53,14 +51,8 @@ interface PriceRow {
   per_call_usd: number;
 }
 
-// Price-map key. A model selected under different tiers (codex free vs team)
-// produces two ModelRules with the SAME alias but different groups — pricing
-// must be tracked per (group, alias) so each row keeps its own numbers. The
-// group prefix (lowercased) disambiguates; aliases without a group use the
-// alias alone, preserving the legacy key shape for non-tiered providers.
-function priceKey(m: { alias: string; group?: string }): string {
-  const g = (m.group ?? "").toLowerCase();
-  return (g ? g + "|" : "") + m.alias.toLowerCase();
+function priceKey(m: { model: string }): string {
+  return m.model.toLowerCase();
 }
 
 function parseNum(value: string): number {
@@ -89,7 +81,8 @@ export default function KeyForm({
   const [allowModels, setAllowModels] = useState<boolean>(initial?.allow_models_endpoint ?? false);
   const t = useT();
 
-  // Pricing table keyed by alias (lowercased) so it survives picker re-emits.
+  // Pricing table keyed by exact model name (case-insensitive) so it survives
+  // picker re-emits.
   const [prices, setPrices] = useState<Record<string, PriceRow>>(() => {
     const out: Record<string, PriceRow> = {};
     for (const m of initial?.models ?? []) {
@@ -107,82 +100,6 @@ export default function KeyForm({
   const [busy, setBusy] = useState(false);
   const [localErr, setLocalErr] = useState("");
   const [expandedPrice, setExpandedPrice] = useState<Record<string, boolean>>({});
-
-  // Global alias table (fetched once on mount). Used by the "已有别名" section
-  // so the user can quickly include an alias's targets instead of picking
-  // each provider+model+group individually from the catalog. Clicking a
-  // global alias adds ALL its targets as ModelRules (so round-robin can rotate
-  // across them); the backend ups-server dedups by alias+provider+target_model
-  // so it reuses the existing global alias instead of creating a duplicate.
-  const [globalAliases, setGlobalAliases] = useState<AliasMapping[]>([]);
-  useEffect(() => {
-    let alive = true;
-    void fetchAliases().then((list) => { if (alive) setGlobalAliases(list); }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
-
-  // aliasSelected reports whether every target of `a` is already in `models`
-  // (i.e. the alias is fully included).
-  const aliasSelected = useCallback((a: AliasMapping) => {
-    return a.targets.every((tgt) =>
-      models.some((m) =>
-        m.alias.toLowerCase() === a.alias.toLowerCase() &&
-        m.provider.toLowerCase() === tgt.provider.toLowerCase() &&
-        m.target_model.toLowerCase() === tgt.target_model.toLowerCase() &&
-        (m.group ?? "").toLowerCase() === (tgt.group ?? "").toLowerCase(),
-      ),
-    );
-  }, [models]);
-
-  // toggleAlias either adds all of an alias's targets (as ModelRules, with the
-  // alias's pricing stamped in) or removes all of them.
-  const toggleAlias = useCallback((a: AliasMapping) => {
-    if (aliasSelected(a)) {
-      // Remove all targets of this alias.
-      setModels((prev) => prev.filter((m) =>
-        !(m.alias.toLowerCase() === a.alias.toLowerCase()),
-      ));
-      setPrices((prev) => {
-        const next = { ...prev };
-        for (const tgt of a.targets) {
-          const k = priceKey({ alias: a.alias, group: tgt.group });
-          delete next[k];
-        }
-        return next;
-      });
-    } else {
-      // Add all targets.
-      const newRules: ModelRule[] = a.targets.map((tgt) => ({
-        alias: a.alias,
-        provider: tgt.provider,
-        target_model: tgt.target_model,
-        group: tgt.group ?? "",
-        billing_mode: a.billing_mode === "per_call" ? "per_call" : "tokens",
-        input_price_per_million: a.input_price_per_million ?? 0,
-        output_price_per_million: a.output_price_per_million ?? 0,
-        cache_read_price_per_million: a.cache_read_price_per_million ?? 0,
-        per_call_usd: a.per_call_usd ?? 0,
-      }));
-      setModels((prev) => {
-        // Drop any partial entries for this alias first, then append all targets.
-        const filtered = prev.filter((m) => m.alias.toLowerCase() !== a.alias.toLowerCase());
-        return [...filtered, ...newRules];
-      });
-      setPrices((prev) => {
-        const next = { ...prev };
-        for (const tgt of a.targets) {
-          next[priceKey({ alias: a.alias, group: tgt.group })] = {
-            input_price_per_million: a.input_price_per_million ?? 0,
-            output_price_per_million: a.output_price_per_million ?? 0,
-            cache_read_price_per_million: a.cache_read_price_per_million ?? 0,
-            billing_mode: a.billing_mode === "per_call" ? "per_call" : "tokens",
-            per_call_usd: a.per_call_usd ?? 0,
-          };
-        }
-        return next;
-      });
-    }
-  }, [aliasSelected]);
 
   // LiteLLM price hints (community price table). Loaded once on mount, silent
   // failure: if null/inflight, the per-row "recommend" affordance simply isn't
@@ -203,8 +120,8 @@ export default function KeyForm({
   // ModelPicker emits fresh ModelRule[] on every selection change (and once
   // when the catalog finishes loading). We must NOT let those re-emits wipe
   // pricing the user already typed: when merging, preserve existing rows and
-  // only (a) add empty rows for newly-selected aliases, (b) drop rows for
-  // aliases that are no longer selected. Keys already present are copied
+  // only (a) add empty rows for newly-selected models, (b) drop rows for
+  // models that are no longer selected. Keys already present are copied
   // through untouched. Wrapped in useCallback so ModelPicker's emit effect
   // does not re-fire on every KeyForm re-render (which would otherwise loop
   // and risk dropping mid-typing values).
@@ -216,7 +133,7 @@ export default function KeyForm({
         const key = priceKey(m);
         updated[key] = prev[key] ?? { input_price_per_million: 0, output_price_per_million: 0, cache_read_price_per_million: 0, billing_mode: "tokens", per_call_usd: 0 };
       }
-      // Rows for (group,alias) pairs no longer selected simply aren't copied.
+      // Rows for models no longer selected simply aren't copied.
       return updated;
     });
   }, []);
@@ -234,10 +151,9 @@ export default function KeyForm({
 
   // One-click fill this row from LiteLLM community prices. Replace semantics:
   // overwrites all three fields (even non-zero user-entered ones). Lookup is by
-  // target_model (the real upstream id); the price writes back to this row's
-  // (group, alias) key, so a same-alias row under a different tier is untouched.
+  // the real model id; the price writes back to this model's row.
   const recommend = (m: ModelRule) => {
-    const row = lookupPrice(priceTable, m.target_model);
+    const row = lookupPrice(priceTable, m.model);
     if (!row) return;
     const key = priceKey(m);
     setPrices((prev) => ({
@@ -262,7 +178,7 @@ export default function KeyForm({
       setLocalErr(t("keyForm.idRequired"));
       return;
     }
-    // Stamp the per-alias pricing back onto the model rules before submit.
+    // Stamp the per-model pricing back onto the model rules before submit.
     const pricedModels: ModelRule[] = models.map((m) => {
       const row = prices[priceKey(m)];
       return {
@@ -300,18 +216,6 @@ export default function KeyForm({
 
   const renderPriceEditor = (m: ModelRule, layout: "table" | "mobile") => {
     const key = priceKey(m);
-    // All ModelRules sharing this (group|alias) key — for a multi-target
-    // global alias they all share one unified price row. The desktop table
-    // renders one row per unique key (see the body filter below) and shows
-    // the aggregated provider/group set so the user sees it's one unified
-    // price across multiple targets, not a per-target price.
-    const sameKey = models.filter((x) => priceKey(x) === key);
-    const isMulti = sameKey.length > 1;
-      const providersUnion = Array.from(new Set(sameKey.map((x) => x.provider))).join(", ");
-      const groupsUnionRaw = Array.from(new Set(sameKey.map((x) => (x.group ?? "").trim()).filter(Boolean)));
-      const groupsUnion = groupsUnionRaw.length
-        ? groupsUnionRaw.map((g) => formatTierLabel(t, g)).join(", ")
-        : "—";
     const row = prices[key] ?? {
       input_price_per_million: 0,
       output_price_per_million: 0,
@@ -320,10 +224,7 @@ export default function KeyForm({
       per_call_usd: 0,
     };
     const perCall = row.billing_mode === "per_call";
-    // Community price hint only makes sense for a single target (one
-    // target_model); for multi-target aliases the price is unified across
-    // different models so auto-fill is meaningless.
-    const hint = priceTable && !isMulti ? lookupPrice(priceTable, m.target_model) : null;
+    const hint = lookupPrice(priceTable, m.model);
 
     if (layout === "mobile") {
       return (
@@ -414,9 +315,7 @@ export default function KeyForm({
     return (
       <Fragment key={key}>
         <tr>
-          <td className="mono">{m.alias}{isMulti ? ` (${sameKey.length})` : ""}</td>
-          <td className="muted">{isMulti ? providersUnion : m.provider}</td>
-          <td className="muted">{isMulti ? groupsUnion : (m.group ? formatTierLabel(t, m.group) : "—")}</td>
+          <td className="mono">{m.model}</td>
           <td>
             <label className="switch" title={t("keyForm.billingModeTitle")}>
               <input
@@ -491,14 +390,14 @@ export default function KeyForm({
         </tr>
         {perCall && row.per_call_usd === 0 && (
           <tr className="muted">
-            <td colSpan={8} style={{ fontSize: "0.85em" }}>
+            <td colSpan={6} style={{ fontSize: "0.85em" }}>
               ⚠ {t("keyForm.perCallZeroWarn")}
             </td>
           </tr>
         )}
         {perCall && (
           <tr className="muted">
-            <td colSpan={8} style={{ fontSize: "0.85em" }}>
+            <td colSpan={6} style={{ fontSize: "0.85em" }}>
               ⚠ {t("keyForm.perCallImageWarn")}
             </td>
           </tr>
@@ -596,27 +495,13 @@ export default function KeyForm({
         ))}
         <section className="kf-section mobile-only">
           <div className="section-label">{t("keyForm.mobile.sectionModels")}</div>
-          {globalAliases.length > 0 && (
-            <div className="form-row kf-alias-pick" style={{ marginBottom: 12 }}>
-              <div className="kf-alias-chips">
-                {globalAliases.map((a) => {
-                  const on = aliasSelected(a);
-                  return (
-                  <button key={a.alias} type="button" className={"kf-alias-chip" + (on ? " selected" : "")} onClick={() => toggleAlias(a)}>
-                    {a.alias}{a.targets.length > 1 ? ` (${a.targets.length})` : ""}
-                  </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           <div className="form-row" style={{ marginBottom: 12 }}>
             {pickPath ? (
               <div className="model-chips-box">
                 {models.length === 0 && <span className="mc-empty">{t("keyForm.modelsEmpty")}</span>}
                 {models.map((m) => (
                   <span key={priceKey(m)} className="mc-chip">
-                    {m.alias}{m.group ? " · " + formatTierLabel(t, m.group) : ""}
+                    {m.model}
                     <button type="button" className="mc-x" onClick={() => {
                       setModels((prev) => prev.filter((x) => priceKey(x) !== priceKey(m)));
                     }} aria-label={t("keyForm.removeModel")}>×</button>
@@ -646,11 +531,7 @@ export default function KeyForm({
                       aria-expanded={open}
                     >
                       <div>
-                        <div className="kf-model-alias">{m.alias}</div>
-                        <div className="muted kf-model-meta">
-                          {m.provider}{m.group ? ` · ${formatTierLabel(t, m.group)}` : ""}
-                        </div>
-                        <div className="mono kf-model-target">{m.target_model}</div>
+                        <div className="kf-model-name">{m.model}</div>
                       </div>
                       <span className={"mm-badge" + (perCall ? " per_call" : "")}>
                         {perCall ? t("keyForm.billingPerCall") : t("keyForm.billingTokens")}
@@ -755,28 +636,6 @@ export default function KeyForm({
         </span>
       </div>
 
-      {globalAliases.length > 0 && (
-        <div className="form-row kf-alias-pick">
-          <label>{t("keyForm.existingAliases")}</label>
-          <div className="kf-alias-chips">
-            {globalAliases.map((a) => {
-              const on = aliasSelected(a);
-              return (
-              <button
-                key={a.alias}
-                type="button"
-                className={"kf-alias-chip" + (on ? " selected" : "")}
-                onClick={() => toggleAlias(a)}
-                title={a.targets.map((t) => `${t.provider}·${t.target_model}${t.group ? `·${t.group}` : ""}`).join("\n")}
-              >
-                {a.alias}{a.targets.length > 1 ? ` (${a.targets.length})` : ""}
-              </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       <div className="form-row">
         <label>{t("keyForm.modelsLabel")}</label>
         {pickPath ? (
@@ -784,7 +643,7 @@ export default function KeyForm({
             {models.length === 0 && <span className="mc-empty">{t("keyForm.modelsEmpty")}</span>}
             {models.map((m) => (
               <span key={priceKey(m)} className="mc-chip">
-                {m.alias}{m.group ? " · " + m.group : ""}
+                {m.model}
                 <button type="button" className="mc-x" onClick={() => {
                   setModels((prev) => prev.filter((x) => priceKey(x) !== priceKey(m)));
                 }} aria-label={t("keyForm.removeModel")}>×</button>
@@ -799,7 +658,7 @@ export default function KeyForm({
         )}
       </div>
 
-      {/* Per-alias pricing table. Stamped onto each ModelRule at submit.
+      {/* Per-model pricing table. Stamped onto each ModelRule at submit.
           Each row toggles between token pricing (default) and per-call fixed
           pricing. Under per_call the three token-price inputs are hidden
           (values retained but dormant) and a single $/call input is shown. */}
@@ -810,9 +669,7 @@ export default function KeyForm({
             <table>
               <thead>
                 <tr>
-                  <th>{t("keyForm.colAlias")}</th>
-                  <th>{t("keyForm.colProvider")}</th>
-                  <th>{t("keyForm.colGroup")}</th>
+                  <th>{t("keyForm.colModel")}</th>
                   <th title={t("keyForm.colBillingModeHint")}>{t("keyForm.colBillingMode")}</th>
                   <th>{t("keyForm.colInput")}</th>
                   <th>{t("keyForm.colOutput")}</th>
@@ -821,10 +678,7 @@ export default function KeyForm({
                 </tr>
               </thead>
               <tbody>
-                {/* Per-alias unified pricing: dedupe by priceKey so a
-                    multi-target global alias renders ONE unified price row
-                    (aggregated provider/group show the targets it covers). */}
-                {models.filter((m, i, arr) => arr.findIndex((x) => priceKey(x) === priceKey(m)) === i).map((m) => renderPriceEditor(m, "table"))}
+                {models.map((m) => renderPriceEditor(m, "table"))}
               </tbody>
             </table>
           </div>

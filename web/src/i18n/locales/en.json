@@ -3,8 +3,7 @@
     "title": "cpa-key-policy Management",
     "keyList": "Keys",
     "newKey": "New Key",
-    "logout": "Log out",
-    "mapping": "Mapping"
+    "logout": "Log out"
   },
   "login": {
     "subTitle": "Sign in to CLIProxyAPI",
@@ -87,11 +86,8 @@
     "allowModelsLabel": "Allow access to /v1/models",
     "allowModelsTitle": "Due to a CPA upstream limitation, the plugin cannot filter the model list per key — only allow-all or 401.",
     "allowModelsHint": "CPA cannot filter the model list per downstream key, so this is binary: allow (client sees the full global list) or 401 (hide it).",
-    "modelsLabel": "Allowed models (multi-select, alias auto = model name)",
+    "modelsLabel": "Allowed models (exact names)",
     "priceLabel": "Model unit price (USD / per million tokens; 0 = not billed)",
-    "colAlias": "Alias",
-    "colProvider": "Provider",
-    "colGroup": "Tier",
     "colBillingMode": "Billing",
     "colBillingModeHint": "Toggle to bill a fixed USD per successful request instead of by token count. Token prices are retained but dormant; untoggle to reuse them.",
     "billingTokens": "Per token",
@@ -118,7 +114,7 @@
       "sectionAccess": "Access",
       "sectionModels": "Models & pricing"
     },
-    "existingAliases": "Existing Aliases (quick reference)"
+    "colModel": "Model"
   },
   "picker": {
     "title": "Select models",
@@ -127,20 +123,10 @@
     "loading": "Loading available models…",
     "loadFailed": "Failed to load model list",
     "empty": "No models returned from CPA. Make sure CPA has upstream providers configured.",
-    "searchPlaceholder": "Search provider, tier, or model name…",
-    "selected": "{{count}} model(s) selected · alias auto = model name",
+    "searchPlaceholder": "Search provider or model name…",
+    "selected": "{{count}} model(s) selected",
     "selectAll": "All",
-    "clearAll": "Clear",
-    "tier": {
-      "free": "Free tier",
-      "plus": "Plus",
-      "team": "Team",
-      "pro": "Pro",
-      "enterprise": "Enterprise",
-      "supported": "Untiered",
-      "free-tier": "Free tier",
-      "classify": "Custom · {{name}}"
-    }
+    "clearAll": "Clear"
   },
   "plainModal": {
     "created": "Key created",
@@ -164,13 +150,10 @@
     "loadFailed": "Load failed",
     "notFound": "Key not found",
     "empty": "No usage recorded for this key yet",
-    "noAlias": "This key has no model aliases configured",
     "windowToggle": "Usage window switch",
     "tabDaily": "Today",
     "tabWeekly": "This week",
-    "colAlias": "Alias",
     "colBillingMode": "Billing",
-    "colProvider": "Provider",
     "colUsd": "USD",
     "colCalls": "Calls",
     "colInput": "Input tokens",
@@ -183,7 +166,6 @@
     "mobile": {
       "today": "Today",
       "thisWeek": "This week",
-      "byAlias": "By alias",
       "limit": "Limit",
       "remaining": "Remaining",
       "calls": "Calls",
@@ -197,73 +179,10 @@
       "maxRpm": "RPM max",
       "viewUsage": "View usage details",
       "tokenMix": "Token mix",
-      "last7Days": "Last 7 days"
-    }
-  },
-  "mapping": {
-    "title": "Mapping",
-    "aliasTab": "Alias Mapping",
-    "classifyTab": "Credential Classification",
-    "newAlias": "New Alias",
-    "newRule": "New Rule",
-    "edit": "Edit",
-    "delete": "Delete",
-    "save": "Save",
-    "cancel": "Cancel",
-    "back": "Back",
-    "refs": "Referenced by {n} key(s)",
-    "unreferenced": "Not referenced",
-    "moreTargets": "+{n} more targets",
-    "deleteBlocked": "Referenced by {n} key(s), remove references first",
-    "alias": {
-      "name": "Alias Name",
-      "dispatch": "Dispatch Mode",
-      "roundRobin": "Round-robin",
-      "priority": "Priority",
-      "roundRobinDesc": "Cycle requests across available targets (load balancing)",
-      "priorityDesc": "Use targets in order, first available wins",
-      "targets": "Target List",
-      "addTarget": "Add Target",
-      "billing": "Billing Mode",
-      "tokens": "Per Token",
-      "perCall": "Per Call",
-      "input": "Input",
-      "output": "Output",
-      "cache": "Cache",
-      "perCallUnit": "per call",
-      "perMillion": "per 1M",
-      "editTitle": "Edit Alias",
-      "newTitle": "New Alias"
+      "last7Days": "Last 7 days",
+      "byModel": "By model"
     },
-    "rule": {
-      "name": "Rule Name",
-      "field": "Match Field",
-      "fieldFilename": "filename",
-      "fieldProvider": "provider",
-      "fieldPlanType": "plan_type",
-      "fieldTier": "tier",
-      "fieldCustom": "Custom...",
-      "customField": "Custom field name",
-      "regex": "Regex Pattern",
-      "regexValid": "Regex compiled successfully",
-      "regexInvalid": "Regex compilation failed: {err}",
-      "group": "Target Group",
-      "enabled": "Enabled",
-      "builtin": "Built-in Rules",
-      "builtinReadOnly": "Read-only",
-      "builtinDesc": "Built-in rules always run after custom rules, detecting plan_type and tier fields",
-      "custom": "Custom Rules",
-      "matchCount": "Matches {{n}} credential(s)",
-      "matchCountZero": "Matches 0 credentials",
-      "prevPage": "Previous",
-      "nextPage": "Next",
-      "pageInfo": "{cur} / {total}",
-      "editTitle": "Edit Rule",
-      "newTitle": "New Rule",
-      "moveUp": "Move Up",
-      "moveDown": "Move Down",
-      "files": "Matched credential files",
-      "noFiles": "No matching credentials"
-    }
+    "noModel": "This key has no models configured",
+    "colModel": "Model"
   }
 }

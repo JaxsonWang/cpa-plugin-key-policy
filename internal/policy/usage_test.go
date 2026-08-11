@@ -23,7 +23,7 @@ func newClockedStore(t *testing.T, now time.Time) (*Store, time.Time) {
 				KeyHash:    hashForUsageTest(t, "cpa_usage"),
 				KeyPreview: "cpa_us..._age",
 				Models: []ModelRule{
-					{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+					{Model: "fast",
 						InputPricePerMillion: 1, OutputPricePerMillion: 2},
 				},
 				DailyLimitUSD:  1.00,
@@ -75,6 +75,25 @@ func TestUsageRecordAndOverLimitDaily(t *testing.T) {
 	}
 }
 
+func TestUsageRecordAndOverLimitWeekly(t *testing.T) {
+	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
+	store, _ := newClockedStore(t, now)
+	key := store.Keys()[0]
+	key.DailyLimitUSD = 0
+	key.WeeklyLimitUSD = 1
+	if err := store.UpsertKey(key, false); err != nil {
+		t.Fatal(err)
+	}
+	headers := http.Header{"Authorization": {"Bearer cpa_usage"}}
+	if cost := store.RecordResponseCost(headers, nil, "fast", []byte(`{"usage":{"prompt_tokens":1000000,"completion_tokens":0}}`)); cost != 1 {
+		t.Fatalf("cost = %v, want 1", cost)
+	}
+	decision := store.Authenticate("POST", "/v1/chat/completions", headers, nil, []byte(`{"model":"fast"}`))
+	if decision.Allowed || !decision.CostLimited || decision.Reason != "weekly_exceeded" {
+		t.Fatalf("decision = %+v, want weekly_exceeded", decision)
+	}
+}
+
 func TestUsageUnlimitedKeyNeverBlocked(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
 	store := NewStore()
@@ -85,7 +104,7 @@ func TestUsageUnlimitedKeyNeverBlocked(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "free", Enabled: true,
 			KeyHash: hashForUsageTest(t, "cpa_free"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 10, OutputPricePerMillion: 10}},
 		}},
 	})
@@ -102,7 +121,7 @@ func TestUsageUnlimitedKeyNeverBlocked(t *testing.T) {
 	}
 }
 
-func TestUsageUnpricedAliasNotBilled(t *testing.T) {
+func TestUsageUnpricedModelNotBilled(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
 	store := NewStore()
 	store.SetClock(func() time.Time { return now })
@@ -112,7 +131,7 @@ func TestUsageUnpricedAliasNotBilled(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "cheap", Enabled: true, DailyLimitUSD: 0.01,
 			KeyHash: hashForUsageTest(t, "cpa_cheap"),
-			Models:  []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex"}}, // no prices
+			Models:  []ModelRule{{Model: "fast"}}, // no prices
 		}},
 	})
 	if err != nil {
@@ -122,7 +141,7 @@ func TestUsageUnpricedAliasNotBilled(t *testing.T) {
 	_ = store.RecordResponseCost(hdr, nil, "fast", []byte(`{"usage":{"prompt_tokens":99999999,"completion_tokens":99999999}}`))
 	d := store.Authenticate("POST", "/v1/chat/completions", hdr, nil, []byte(`{"model":"fast"}`))
 	if !d.Allowed {
-		t.Fatalf("unpriced alias should never exceed: %+v", d)
+		t.Fatalf("unpriced model should never exceed: %+v", d)
 	}
 }
 
@@ -136,7 +155,7 @@ func TestUsageStreamingBilledWhenUsageFrame(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "streamy", Enabled: true, DailyLimitUSD: 0.01,
 			KeyHash: hashForUsageTest(t, "cpa_stream"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	})
@@ -163,7 +182,7 @@ func TestUsageStreamingBilledWhenUsageFrame(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "streamy2", Enabled: true, DailyLimitUSD: 0.01,
 			KeyHash: hashForUsageTest(t, "cpa_stream2"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	}); err != nil {
@@ -214,7 +233,7 @@ func TestUsagePersistsAcrossRestart(t *testing.T) {
 			Keys: []KeyConfig{{
 				ID: "team-a", Enabled: true, DailyLimitUSD: 1.0,
 				KeyHash: hashForUsageTest(t, "cpa_usage"),
-				Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+				Models: []ModelRule{{Model: "fast",
 					InputPricePerMillion: 1, OutputPricePerMillion: 0}},
 			}},
 		}); err != nil {
@@ -250,9 +269,9 @@ func TestUsagePersistsAcrossRestart(t *testing.T) {
 	}
 }
 
-// newCacheStore builds a store with one key whose alias has an explicit
+// newCacheStore builds a store with one key whose model has an explicit
 // cache-read price, for cache-stat accounting tests.
-func newCacheStore(t *testing.T, now time.Time, provider string) *Store {
+func newCacheStore(t *testing.T, now time.Time) *Store {
 	t.Helper()
 	store := NewStore()
 	store.SetClock(func() time.Time { return now })
@@ -264,7 +283,7 @@ func newCacheStore(t *testing.T, now time.Time, provider string) *Store {
 			KeyHash:    hashForUsageTest(t, "cpa_cache"),
 			KeyPreview: "cpa_ca...che",
 			Models: []ModelRule{{
-				Alias: "fast", Provider: provider, TargetModel: "m",
+				Model:                    "fast",
 				InputPricePerMillion:     3,
 				OutputPricePerMillion:    15,
 				CacheReadPricePerMillion: 0.30,
@@ -281,9 +300,9 @@ func newCacheStore(t *testing.T, now time.Time, provider string) *Store {
 // cacheRead 200K, nonCacheInput 800K. Hit-rate = 200K/(200K+800K) = 20%.
 func TestCacheStatsAccumulatedAndHitRate(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
-	store := newCacheStore(t, now, "openai")
+	store := newCacheStore(t, now)
 	cost := store.RecordUsage("cache-key", "fast", "m", false, UsageDetail{
-		InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
+		Provider: "openai", InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
 	})
 	if !nearly(cost, 9.96) {
 		t.Fatalf("cost = %v, want 9.96", cost)
@@ -317,14 +336,14 @@ func TestCacheStatsAccumulatedAndHitRate(t *testing.T) {
 // which survives the ledger rebuild via the state file.)
 func TestCacheStatsResetAtMidnight(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
-	store := newCacheStore(t, now, "openai")
+	store := newCacheStore(t, now)
 	_ = store.RecordUsage("cache-key", "fast", "m", false, UsageDetail{
-		InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
+		Provider: "openai", InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
 	})
 	store.SetClock(func() time.Time { return now.Add(14 * time.Hour) }) // next UTC day
 	// A new day-2 record: 1M input (200K cached), no output.
 	_ = store.RecordUsage("cache-key", "fast", "m", false, UsageDetail{
-		InputTokens: 1_000_000, OutputTokens: 0, CachedTokens: 200_000,
+		Provider: "openai", InputTokens: 1_000_000, OutputTokens: 0, CachedTokens: 200_000,
 	})
 
 	s := store.UsageSummaryFor(store.Keys()[0])
@@ -343,8 +362,9 @@ func TestCacheStatsResetAtMidnight(t *testing.T) {
 // 800K input + 200K cacheRead + 100K cacheCreation + 500K output @ $3/$15/$0.30.
 func TestCacheStatsAdditiveExcludesCreation(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
-	store := newCacheStore(t, now, "claude")
+	store := newCacheStore(t, now)
 	_ = store.RecordUsage("cache-key", "fast", "m", false, UsageDetail{
+		Provider:            "claude",
 		InputTokens:         800_000,
 		OutputTokens:        500_000,
 		CacheReadTokens:     200_000,
@@ -375,7 +395,7 @@ func TestCacheStatsPersistAcrossRestart(t *testing.T) {
 				ID: "cache-key", Enabled: true,
 				KeyHash: hashForUsageTest(t, "cpa_cache"),
 				Models: []ModelRule{{
-					Alias: "fast", Provider: "openai", TargetModel: "m",
+					Model:                    "fast",
 					InputPricePerMillion:     3,
 					OutputPricePerMillion:    15,
 					CacheReadPricePerMillion: 0.30,
@@ -388,7 +408,7 @@ func TestCacheStatsPersistAcrossRestart(t *testing.T) {
 	}
 	s1 := mk()
 	_ = s1.RecordUsage("cache-key", "fast", "m", false, UsageDetail{
-		InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
+		Provider: "openai", InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 200_000,
 	})
 	if err := s1.FlushUsage(); err != nil {
 		t.Fatal(err)
@@ -400,7 +420,7 @@ func TestCacheStatsPersistAcrossRestart(t *testing.T) {
 	}
 }
 
-// newPerCallStore builds a store with one key whose alias is billed per-call at
+// newPerCallStore builds a store with one key whose model is billed per-call at
 // perCallUSD, under a daily dollar limit, for per-call billing tests.
 func newPerCallStore(t *testing.T, perCallUSD, dailyLimit float64) *Store {
 	t.Helper()
@@ -414,9 +434,7 @@ func newPerCallStore(t *testing.T, perCallUSD, dailyLimit float64) *Store {
 			ID: "percall", Enabled: true, DailyLimitUSD: dailyLimit,
 			KeyHash: hashForUsageTest(t, "cpa_percall"),
 			Models: []ModelRule{{
-				Alias:       "fast",
-				Provider:    "codex",
-				TargetModel: "gpt-5-codex",
+				Model:       "fast",
 				BillingMode: "per_call",
 				PerCallUSD:  perCallUSD,
 				// Token prices are dormant under per_call but kept to verify they
@@ -463,12 +481,12 @@ func TestPerCallBillsFixedUSD(t *testing.T) {
 	}
 }
 
-// TestTokenModeFreeAliasStillCounts: a token-mode alias whose configured
+// TestTokenModeFreeModelStillCounts: a token-mode model whose configured
 // input/output/cache prices are all 0 (priced=true but free) must still
 // record token + call counters. Previously both RecordResponseCost and
 // RecordUsage gated RecordCost on `cost > 0`, dropping free-but-priced
 // requests entirely so their usage volume / hit-rate was invisible.
-func TestTokenModeFreeAliasStillCounts(t *testing.T) {
+func TestTokenModeFreeModelStillCounts(t *testing.T) {
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	store := NewStore()
 	store.SetClock(func() time.Time { return now })
@@ -479,7 +497,7 @@ func TestTokenModeFreeAliasStillCounts(t *testing.T) {
 	if err := store.Configure(Config{Enabled: true, StateFile: filepath.Join(t.TempDir(), "state.json"), Keys: []KeyConfig{{
 		ID: "free", Enabled: true, KeyHash: hash,
 		Models: []ModelRule{{
-			Alias: "fast", Provider: "anthropic", TargetModel: "m",
+			Model:                    "fast",
 			InputPricePerMillion:     0,
 			OutputPricePerMillion:    0,
 			CacheReadPricePerMillion: 0,
@@ -489,10 +507,11 @@ func TestTokenModeFreeAliasStillCounts(t *testing.T) {
 	}
 	// usage.handle path (RecordUsage): non-zero tokens, all prices 0.
 	cost := store.RecordUsage("free", "fast", "m", false, UsageDetail{
+		Provider:    "anthropic",
 		InputTokens: 1_000_000, OutputTokens: 500_000, CacheReadTokens: 200_000,
 	})
 	if cost != 0 {
-		t.Fatalf("cost = %v, want 0 (free alias)", cost)
+		t.Fatalf("cost = %v, want 0 (free model)", cost)
 	}
 	sum := store.UsageSummaryFor(store.Keys()[0])
 	if sum.DailyCallCount != 1 {
@@ -516,8 +535,8 @@ func TestAllowModelsEndpointPerKey(t *testing.T) {
 	hashA, _ := HashKey("cpa_a")
 	hashB, _ := HashKey("cpa_b")
 	if err := store.Configure(Config{Enabled: true, StateFile: filepath.Join(t.TempDir(), "state2.json"), Keys: []KeyConfig{
-		{ID: "hidden", Enabled: true, KeyHash: hashA, Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex"}}},
-		{ID: "open", Enabled: true, KeyHash: hashB, Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex"}}, AllowModelsEndpoint: true},
+		{ID: "hidden", Enabled: true, KeyHash: hashA, Models: []ModelRule{{Model: "fast"}}},
+		{ID: "open", Enabled: true, KeyHash: hashB, Models: []ModelRule{{Model: "fast"}}, AllowModelsEndpoint: true},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -569,11 +588,11 @@ func TestPerCallZeroStillCounts(t *testing.T) {
 	}
 }
 
-// TestAliasUsageBreakdown: per-alias daily/weekly windows accumulate
-// independently, configured-but-unused aliases appear as zero rows, output
-// tokens are tracked, and an alias that was billed then removed from the key's
+// TestModelUsageBreakdown: per-model daily/weekly windows accumulate
+// independently, configured-but-unused models appear as zero rows, output
+// tokens are tracked, and a model that was billed then removed from the key's
 // config appears as a residual with InConfig=false.
-func TestAliasUsageBreakdown(t *testing.T) {
+func TestModelUsageBreakdown(t *testing.T) {
 	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	store := NewStore()
@@ -585,9 +604,9 @@ func TestAliasUsageBreakdown(t *testing.T) {
 			Models:  models,
 		}}}
 	}
-	fast := ModelRule{Alias: "fast", Provider: "codex", TargetModel: "gpt-5-codex",
+	fast := ModelRule{Model: "fast",
 		InputPricePerMillion: 1, OutputPricePerMillion: 2}
-	slow := ModelRule{Alias: "slow", Provider: "codex", TargetModel: "o4-mini",
+	slow := ModelRule{Model: "slow",
 		InputPricePerMillion: 1, OutputPricePerMillion: 1}
 	if err := store.Configure(mkCfg([]ModelRule{fast, slow})); err != nil {
 		t.Fatal(err)
@@ -602,59 +621,55 @@ func TestAliasUsageBreakdown(t *testing.T) {
 		InputTokens: 50_000, OutputTokens: 0,
 	})
 	// Update the key to ONLY fast (mirrors the management PATCH path:
-	// the alias is removed from config but the usage ledger keeps its history).
-	// In the new architecture, keys reference global aliases by name, so we
+	// the model is removed from config but the usage ledger keeps its history).
+	// In the new architecture, keys store direct model names, so we
 	// update teamA.Aliases to only reference "fast".
 	teamA := store.Keys()[0]
-	teamA.Aliases = []KeyAliasRef{{Alias: "fast"}}
-	teamA.Models = nil
+	teamA.Models = []ModelRule{{Model: "fast", InputPricePerMillion: 1, OutputPricePerMillion: 2}}
 	if err := store.UpsertKey(teamA, true); err != nil {
 		t.Fatal(err)
 	}
 
-	_, rows, ok := store.AliasUsageFor("team-a")
+	_, rows, ok := store.ModelUsageFor("team-a")
 	if !ok {
 		t.Fatal("key not found")
 	}
-	byAlias := map[string]AliasUsageEntry{}
+	byModel := map[string]ModelUsageEntry{}
 	for _, r := range rows {
-		byAlias[r.Alias] = r
+		byModel[r.Model] = r
 	}
 	if len(rows) != 2 {
 		t.Fatalf("row count = %d, want 2 (fast+slow residual)", len(rows))
 	}
 	// fast: configured, billed $0.40 daily & weekly, 1 call, 200K input, 100K output.
-	f := byAlias["fast"]
+	f := byModel["fast"]
 	if !f.InConfig || !nearly(f.Daily.TotalUSD, 0.40) || !nearly(f.Weekly.TotalUSD, 0.40) {
 		t.Fatalf("fast row = %+v, want in_config=true $0.40/$0.40", f)
 	}
 	if f.Daily.CallCount != 1 || f.Daily.InputTokens != 200_000 || f.Daily.OutputTokens != 100_000 {
 		t.Fatalf("fast daily counters = %+v, want 1/200000/100000", f.Daily)
 	}
-	if f.Provider != "codex" || f.TargetModel != "gpt-5-codex" {
-		t.Fatalf("fast config fields = %+v", f)
-	}
 	// slow: removed from config but has historical usage → InConfig=false, residual data.
-	s := byAlias["slow"]
+	s := byModel["slow"]
 	if s.InConfig {
 		t.Fatalf("slow should be in_config=false after removal: %+v", s)
 	}
 	if !nearly(s.Daily.TotalUSD, 0.05) || s.Daily.InputTokens != 50_000 || s.Daily.CallCount != 1 {
 		t.Fatalf("slow residual daily = %+v, want $0.05 / 50000 / 1 call", s.Daily)
 	}
-	// Sorted by alias.
-	if rows[0].Alias != "fast" || rows[1].Alias != "slow" {
-		t.Fatalf("rows not sorted by alias: %+v", rows)
+	// Sorted by model.
+	if rows[0].Model != "fast" || rows[1].Model != "slow" {
+		t.Fatalf("rows not sorted by model: %+v", rows)
 	}
 }
 
-// TestAliasUsageUnknownKey: a missing key id returns ok=false.
-func TestAliasUsageUnknownKey(t *testing.T) {
+// TestModelUsageUnknownKey: a missing key id returns ok=false.
+func TestModelUsageUnknownKey(t *testing.T) {
 	store := NewStore()
 	if err := store.Configure(Config{Enabled: true, StateFile: filepath.Join(t.TempDir(), "s.json")}); err != nil {
 		t.Fatal(err)
 	}
-	_, _, ok := store.AliasUsageFor("nope")
+	_, _, ok := store.ModelUsageFor("nope")
 	if ok {
 		t.Fatal("unknown key should return ok=false")
 	}
@@ -701,17 +716,36 @@ func TestAliasUsageLegacyStateMigrates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, rows, ok := store.AliasUsageFor("team-a")
+	// Configure persists the canonical v2 shape immediately, rather than only
+	// migrating in memory and later stamping version=2 onto legacy rules.
+	persistedRaw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted State
+	if err := json.Unmarshal(persistedRaw, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Version != 2 || len(persisted.Keys) != 1 || len(persisted.Keys[0].Models) != 1 {
+		t.Fatalf("persisted state shape = %+v, want canonical v2 key", persisted)
+	}
+	persistedRule := persisted.Keys[0].Models[0]
+	if persistedRule.Model != "gpt-5-codex" || persistedRule.Alias != "" || persistedRule.Provider != "" || persistedRule.TargetModel != "" || persistedRule.Group != "" {
+		t.Fatalf("persisted migrated rule = %+v, want direct model only", persistedRule)
+	}
+
+	_, rows, ok := store.ModelUsageFor("team-a")
 	if !ok {
 		t.Fatal("key not found after migration")
 	}
-	if len(rows) != 1 || rows[0].Alias != "fast" {
-		t.Fatalf("rows = %+v, want one fast row", rows)
+	if len(rows) != 2 || rows[0].Model != "fast" || rows[1].Model != "gpt-5-codex" {
+		t.Fatalf("rows = %+v, want legacy alias residual plus migrated direct model", rows)
 	}
 	fast := rows[0]
-	// fast is in config → InConfig=true; legacy window migrated into Daily.
-	if !fast.InConfig {
-		t.Fatalf("fast should be in_config=true: %+v", fast)
+	// The removed alias stays as an honest historical residual; the migrated
+	// direct model is the active policy row.
+	if fast.InConfig || !rows[1].InConfig {
+		t.Fatalf("legacy/direct config markers are wrong: %+v", rows)
 	}
 	if !nearly(fast.Daily.TotalUSD, 0.80) || fast.Daily.CallCount != 2 || fast.Daily.InputTokens != 800_000 {
 		t.Fatalf("migrated daily = %+v, want 0.80/2/800000", fast.Daily)
@@ -767,7 +801,7 @@ func TestCallCountIncrementedTokenMode(t *testing.T) {
 		Keys: []KeyConfig{{
 			ID: "tok", Enabled: true,
 			KeyHash: hashForUsageTest(t, "cpa_tok"),
-			Models: []ModelRule{{Alias: "fast", Provider: "codex", TargetModel: "m",
+			Models: []ModelRule{{Model: "fast",
 				InputPricePerMillion: 1, OutputPricePerMillion: 1}},
 		}},
 	}); err != nil {

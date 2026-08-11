@@ -3,8 +3,7 @@
     "title": "Управление cpa-key-policy",
     "keyList": "Ключи",
     "newKey": "Новый ключ",
-    "logout": "Выйти",
-    "mapping": "Маппинг"
+    "logout": "Выйти"
   },
   "login": {
     "subTitle": "Вход в CLIProxyAPI",
@@ -87,11 +86,8 @@
     "allowModelsLabel": "Разрешить доступ к /v1/models",
     "allowModelsTitle": "Из-за ограничения CPA upstream плагин не может фильтровать список моделей по ключу — только разрешить всё или 401.",
     "allowModelsHint": "CPA не может фильтровать список моделей по ключу, поэтому выбор бинарный: разрешить (клиент видит весь глобальный список) или 401 (скрыть).",
-    "modelsLabel": "Разрешённые модели (мультивыбор, alias = имя модели)",
+    "modelsLabel": "Разрешённые модели (точные имена)",
     "priceLabel": "Цена модели (USD / млн токенов; 0 = не тарифицируется)",
-    "colAlias": "Алиас",
-    "colProvider": "Provider",
-    "colGroup": "Тир",
     "colBillingMode": "Тарификация",
     "colBillingModeHint": "Включите, чтобы списывать фиксированную USD за каждый успешный запрос вместо подсчёта токенов. Цены за токены сохраняются, но не применяются; выключите, чтобы вернуть их.",
     "billingTokens": "По токенам",
@@ -118,7 +114,7 @@
       "sectionAccess": "Доступ",
       "sectionModels": "Модели и цены"
     },
-    "existingAliases": "Существующие псевдонимы"
+    "colModel": "Модель"
   },
   "picker": {
     "title": "Выбор моделей",
@@ -127,20 +123,10 @@
     "loading": "Загрузка доступных моделей…",
     "loadFailed": "Ошибка загрузки списка моделей",
     "empty": "CPA не вернул ни одной модели. Убедитесь, что в CPA настроены вышестоящие провайдеры.",
-    "searchPlaceholder": "Поиск провайдера, тира или модели…",
-    "selected": "Выбрано моделей: {{count}} · alias = имя модели",
+    "searchPlaceholder": "Поиск по provider или имени модели…",
+    "selected": "Выбрано моделей: {{count}}",
     "selectAll": "Все",
-    "clearAll": "Сброс",
-    "tier": {
-      "free": "Бесплатный тир",
-      "plus": "Plus",
-      "team": "Team",
-      "pro": "Pro",
-      "enterprise": "Enterprise",
-      "supported": "Без тира",
-      "free-tier": "Бесплатный тир",
-      "classify": "Свой · {{name}}"
-    }
+    "clearAll": "Сброс"
   },
   "plainModal": {
     "created": "Ключ создан",
@@ -164,13 +150,10 @@
     "loadFailed": "Ошибка загрузки",
     "notFound": "Ключ не найден",
     "empty": "Для этого ключа пока нет данных об использовании",
-    "noAlias": "У этого ключа нет настроенных псевдонимов моделей",
     "windowToggle": "Переключение окна использования",
     "tabDaily": "Сегодня",
     "tabWeekly": "На неделе",
-    "colAlias": "Псевдоним",
     "colBillingMode": "Биллинг",
-    "colProvider": "Provider",
     "colUsd": "USD",
     "colCalls": "Вызовы",
     "colInput": "Input tokens",
@@ -183,7 +166,6 @@
     "mobile": {
       "today": "Сегодня",
       "thisWeek": "Эта неделя",
-      "byAlias": "По псевдониму",
       "limit": "Лимит",
       "remaining": "Остаток",
       "calls": "Вызовы",
@@ -197,73 +179,10 @@
       "maxRpm": "RPM макс",
       "viewUsage": "Подробности использования",
       "tokenMix": "Состав токенов",
-      "last7Days": "Последние 7 дней"
-    }
-  },
-  "mapping": {
-    "title": "Маппинг",
-    "aliasTab": "Псевдонимы",
-    "classifyTab": "Классификация",
-    "newAlias": "Новый псевдоним",
-    "newRule": "Новое правило",
-    "edit": "Изменить",
-    "delete": "Удалить",
-    "save": "Сохранить",
-    "cancel": "Отмена",
-    "back": "Назад",
-    "refs": "Используется {n} ключами",
-    "unreferenced": "Не используется",
-    "moreTargets": "+{n} ещё целей",
-    "deleteBlocked": "Используется {n} ключами, сначала удалите ссылки",
-    "alias": {
-      "name": "Имя псевдонима",
-      "dispatch": "Режим",
-      "roundRobin": "Round-robin",
-      "priority": "Приоритет",
-      "roundRobinDesc": "Циклическое распределение запросов между целями",
-      "priorityDesc": "Использовать цели по порядку, первая доступная",
-      "targets": "Список целей",
-      "addTarget": "Добавить цель",
-      "billing": "Режим оплаты",
-      "tokens": "По токенам",
-      "perCall": "За вызов",
-      "input": "Вход",
-      "output": "Выход",
-      "cache": "Кэш",
-      "perCallUnit": "за вызов",
-      "perMillion": "за 1M",
-      "editTitle": "Изменить псевдоним",
-      "newTitle": "Новый псевдоним"
+      "last7Days": "Последние 7 дней",
+      "byModel": "По модели"
     },
-    "rule": {
-      "name": "Имя правила",
-      "field": "Поле",
-      "fieldFilename": "filename",
-      "fieldProvider": "provider",
-      "fieldPlanType": "plan_type",
-      "fieldTier": "tier",
-      "fieldCustom": "Своё...",
-      "customField": "Свое имя поля",
-      "regex": "Регулярное выражение",
-      "regexValid": "Регулярное выражение корректно",
-      "regexInvalid": "Ошибка компиляции: {err}",
-      "group": "Целевая группа",
-      "enabled": "Включено",
-      "builtin": "Встроенные правила",
-      "builtinReadOnly": "только чтение",
-      "builtinDesc": "Встроенные правила запускаются после пользовательских, обнаруживая plan_type и tier",
-      "custom": "Пользовательские правила",
-      "matchCount": "Совпадает {{n}}",
-      "matchCountZero": "Совпадений 0",
-      "prevPage": "Назад",
-      "nextPage": "Вперёд",
-      "pageInfo": "{cur} / {total}",
-      "editTitle": "Изменить правило",
-      "newTitle": "Новое правило",
-      "moveUp": "Вверх",
-      "moveDown": "Вниз",
-      "files": "Найденные файлы",
-      "noFiles": "Нет совпадений"
-    }
+    "noModel": "У этого ключа нет настроенных моделей",
+    "colModel": "Модель"
   }
 }
